@@ -9,6 +9,9 @@
     git-hooks.inputs.nixpkgs.follows = "nixpkgs";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
+    rust-overlay.url = "github:oxalica/rust-overlay";
+    rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
+    crane.url = "github:ipetkov/crane";
   };
 
   outputs =
@@ -23,11 +26,22 @@
         {
           config,
           pkgs,
+          system,
           ...
         }:
+        let
+          rustToolchain = pkgs.rust-bin.stable.latest.default;
+        in
         {
+          _module.args.pkgs = import inputs.nixpkgs {
+            inherit system;
+            overlays = [ inputs.rust-overlay.overlays.default ];
+          };
+
           devShells.default = pkgs.mkShellNoCC {
             inputsFrom = [ config.pre-commit.devShell ];
+
+            packages = [ rustToolchain ];
           };
 
           pre-commit.settings = {
@@ -44,6 +58,9 @@
             projectRootFile = "flake.nix";
             programs = {
               nixfmt.enable = true;
+              rustfmt.enable = true;
+              rustfmt.package = rustToolchain;
+              taplo.enable = true;
             };
           };
         };

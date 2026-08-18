@@ -1,0 +1,23 @@
+[workspace]
+members = []
+resolver = "3"
+
+[workspace.dependencies]
+
+[workspace.lints.clippy]
+all = "deny"
+expect_used = "deny"
+nursery = "deny"
+panic = "deny"
+pedantic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unwrap_used = "deny"
+
+[workspace.lints.rust]
+future_incompatible = "deny"
+unsafe_code = "deny"
+unused = "deny"
+
+[workspace.package]
+edition = "2024"
