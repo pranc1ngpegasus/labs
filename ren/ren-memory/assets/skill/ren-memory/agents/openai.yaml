@@ -1,0 +1,4 @@
+interface:
+  display_name: "ren-memory"
+  short_description: "Capture, search, and curate local agent memory"
+  default_prompt: "Use $ren-memory to capture and retrieve project knowledge."

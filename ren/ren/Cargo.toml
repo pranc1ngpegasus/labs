@@ -1,0 +1,18 @@
+[package]
+description = "A foundation for continuous development with coding agents"
+edition.workspace = true
+name = "ren"
+version.workspace = true
+
+[dependencies]
+clap = { workspace = true, features = ["derive"] }
+ren-memory.workspace = true
+ren-workflow.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3.23.0"
+
+[lints]
+workspace = true

@@ -1,0 +1,4 @@
+interface:
+  display_name: "ren-workflow"
+  short_description: "Discover, run, and author deterministic agent workflows"
+  default_prompt: "Use $ren-workflow to discover and run a deterministic agent workflow."

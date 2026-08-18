@@ -3,6 +3,9 @@ members = [
   "koe/koe-cli",
   "koe/koe-core",
   "koe/koe-ffi",
+  "ren/ren",
+  "ren/ren-memory",
+  "ren/ren-workflow",
   "sui/sui",
   "sui/sui-agent",
   "sui/sui-app",
@@ -26,6 +29,8 @@ flacenc = { version = "0.5.1", default-features = false }
 fs2 = "0.4.3"
 futures = "0.3.34"
 gitpatch = "0.7.1"
+ignore = "0.4.23"
+jiff = "0.2.18"
 koe-cli = { path = "koe/koe-cli" }
 koe-core = { path = "koe/koe-core" }
 koe-ffi = { path = "koe/koe-ffi" }
@@ -40,9 +45,13 @@ objc2-screen-capture-kit = { version = "0.3.2", default-features = false }
 objc2-speech = { version = "0.3.2", default-features = false }
 ratatui = { version = "0.30.2", default-features = false }
 regex = "1.13.1"
+ren-memory = { path = "./ren/ren-memory" }
+ren-workflow = { path = "./ren/ren-workflow" }
 reqwest = { version = "0.13.4", default-features = false }
 rhai = "1.23.6"
-serde = { version = "1.0.228", features = ["derive"] }
+rusqlite = "0.40.1"
+rustix = "1.1.4"
+serde = "1.0.228"
 serde_json = "1.0.149"
 sha2 = "0.11.0"
 sui-agent = { path = "./sui/sui-agent" }
@@ -57,10 +66,13 @@ tantivy = "0.26.1"
 thiserror = "2.0.20"
 tokio = "1.53.1"
 toml = "0.8.23"
+toml_edit = "0.25.13"
+ulid = "3.0.0"
 unicode-width = "0.2.2"
 uniffi = "0.28.3"
 vorbis_rs = "0.5.6"
 wiremock = "0.6.5"
+yaml_serde = "0.10.4"
 
 [workspace.lints.clippy]
 all = "deny"

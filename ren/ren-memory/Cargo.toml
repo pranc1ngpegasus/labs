@@ -1,0 +1,25 @@
+[package]
+edition.workspace = true
+name = "ren-memory"
+version.workspace = true
+
+[dependencies]
+clap = { workspace = true, features = ["derive"] }
+fs2.workspace = true
+ignore.workspace = true
+jiff.workspace = true
+ren-workflow.workspace = true
+rusqlite = { workspace = true, features = ["bundled"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+toml_edit = { workspace = true, features = ["serde"] }
+ulid.workspace = true
+yaml_serde.workspace = true
+
+[dev-dependencies]
+tempfile = "3.23.0"
+
+[lints]
+workspace = true

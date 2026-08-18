@@ -79,6 +79,14 @@
                 version
                 ;
             };
+            ren = import ./ren/package.nix {
+              inherit (pkgs) stdenv;
+              inherit
+                craneLib
+                src
+                version
+                ;
+            };
           };
 
           pre-commit.settings = {
