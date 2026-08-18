@@ -48,22 +48,20 @@
 
           rustToolchain = pkgs.rust-bin.stable.latest.default;
           craneLib = (inputs.crane.mkLib pkgs).overrideToolchain rustToolchain;
-          src =
-            pkgs.lib.cleanSourceWith
-              {
-                # cleanCargoSource would strip the non-Rust files that the ren
-                # crates pull in via include_str! (their assets/ and bundled/
-                # dirs, plus ren/README.md used by test code) — keep those.
-                src = ./.;
-                filter =
-                  path: type:
-                  let
-                    p = toString path;
-                  in
-                  builtins.match ".*/(bundled|assets)(/.*)?$" p != null
-                  || pkgs.lib.hasSuffix "/README.md" p
-                  || craneLib.filterCargoSources path type;
-              };
+          src = pkgs.lib.cleanSourceWith {
+            # cleanCargoSource would strip the non-Rust files that the ren
+            # crates pull in via include_str! (their assets/ and bundled/
+            # dirs, plus ren/README.md used by test code) — keep those.
+            src = ./.;
+            filter =
+              path: type:
+              let
+                p = toString path;
+              in
+              builtins.match ".*/(bundled|assets)(/.*)?$" p != null
+              || pkgs.lib.hasSuffix "/README.md" p
+              || craneLib.filterCargoSources path type;
+          };
 
           # The whole workspace builds in a single derivation (see the
           # package.nix files), so dependency artifacts are built once here
