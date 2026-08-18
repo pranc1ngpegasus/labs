@@ -578,7 +578,8 @@ mod tests {
 
     #[tokio::test]
     async fn start_stop_with_authorized_permissions() {
-        install_provider(vec![(Permission::Microphone, PermissionStatus::Authorized)]);
+        let _guard =
+            install_provider(vec![(Permission::Microphone, PermissionStatus::Authorized)]).await;
         let output = unique_path("start-stop");
 
         let mut pipeline = RecordingPipeline::start(test_config(&output))
@@ -599,7 +600,8 @@ mod tests {
 
     #[tokio::test]
     async fn pause_resume_cycle() {
-        install_provider(vec![(Permission::Microphone, PermissionStatus::Authorized)]);
+        let _guard =
+            install_provider(vec![(Permission::Microphone, PermissionStatus::Authorized)]).await;
         let output = unique_path("pause");
 
         let mut pipeline = RecordingPipeline::start(test_config(&output))
@@ -627,7 +629,8 @@ mod tests {
 
     #[tokio::test]
     async fn progress_emits_lifecycle_states() {
-        install_provider(vec![(Permission::Microphone, PermissionStatus::Authorized)]);
+        let _guard =
+            install_provider(vec![(Permission::Microphone, PermissionStatus::Authorized)]).await;
         let output = unique_path("progress");
 
         let mut pipeline = RecordingPipeline::start(test_config(&output))
@@ -659,7 +662,8 @@ mod tests {
 
     #[tokio::test]
     async fn start_without_transcription() {
-        install_provider(vec![(Permission::Microphone, PermissionStatus::Authorized)]);
+        let _guard =
+            install_provider(vec![(Permission::Microphone, PermissionStatus::Authorized)]).await;
         let output = unique_path("no-asr");
 
         let mut config = test_config(&output);
@@ -680,7 +684,8 @@ mod tests {
 
     #[tokio::test]
     async fn start_with_denied_permission_fails() {
-        install_provider(vec![(Permission::Microphone, PermissionStatus::Denied)]);
+        let _guard =
+            install_provider(vec![(Permission::Microphone, PermissionStatus::Denied)]).await;
         let output = unique_path("denied");
         let Err(err) = RecordingPipeline::start(test_config(&output)).await else {
             panic!("permission denied");
@@ -690,7 +695,8 @@ mod tests {
 
     #[tokio::test]
     async fn start_with_insufficient_disk_space_fails() {
-        install_provider(vec![(Permission::Microphone, PermissionStatus::Authorized)]);
+        let _guard =
+            install_provider(vec![(Permission::Microphone, PermissionStatus::Authorized)]).await;
         let output = unique_path("disk");
         let mut config = test_config(&output);
         config.estimated_duration_hours = Some(1_000_000.0);
