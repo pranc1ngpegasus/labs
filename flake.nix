@@ -92,6 +92,8 @@
             test = craneLib.cargoTest {
               inherit src cargoArtifacts;
               pname = "labs-workspace";
+              # sui-tools' edit tests run `git init` in a temp dir.
+              nativeBuildInputs = [ pkgs.git ];
             };
           };
 
