@@ -71,6 +71,14 @@
                 version
                 ;
             };
+            koe = import ./koe/package.nix {
+              inherit (pkgs) stdenv;
+              inherit
+                craneLib
+                src
+                version
+                ;
+            };
           };
 
           pre-commit.settings = {
@@ -89,8 +97,12 @@
               nixfmt.enable = true;
               rustfmt.enable = true;
               rustfmt.package = rustToolchain;
+              swift-format.enable = true;
               taplo.enable = true;
             };
+            settings.global.excludes = [
+              "koe/koe-native/generated/**"
+            ];
           };
         };
 

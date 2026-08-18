@@ -1,0 +1,33 @@
+[package]
+edition.workspace = true
+name = "koe-core"
+version.workspace = true
+
+[features]
+aec = []
+cli = []
+default = ["aec", "cli", "ogg", "screen-audio", "system-audio"]
+gui = []
+ogg = ["dep:vorbis_rs"]
+screen-audio = []
+system-audio = []
+
+[dependencies]
+flacenc = { workspace = true }
+fs2 = { workspace = true }
+koe-ffi = { workspace = true }
+log = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = [
+  "fs",
+  "io-util",
+  "macros",
+  "rt-multi-thread",
+  "sync",
+  "time",
+] }
+vorbis_rs = { workspace = true, optional = true }
+
+[lints]
+workspace = true

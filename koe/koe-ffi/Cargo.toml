@@ -1,0 +1,70 @@
+[package]
+edition.workspace = true
+name = "koe-ffi"
+version.workspace = true
+
+[lib]
+crate-type = ["lib", "staticlib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
+[dependencies]
+thiserror = { workspace = true }
+uniffi = { workspace = true, features = ["cli"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = { workspace = true }
+dispatch2 = { workspace = true }
+objc2 = { workspace = true }
+objc2-app-kit = { workspace = true, features = [
+  "NSApplication",
+  "NSResponder",
+  "NSRunningApplication",
+  "NSWorkspace",
+  "libc",
+] }
+objc2-av-foundation = { workspace = true, features = [
+  "AVCaptureDevice",
+  "AVMediaFormat",
+  "block2",
+] }
+objc2-avf-audio = { workspace = true, features = [
+  "AVAudioBuffer",
+  "AVAudioFormat",
+  "AVAudioTypes",
+] }
+objc2-core-media = { workspace = true, features = ["CMTime"] }
+objc2-foundation = { workspace = true, features = [
+  "NSArray",
+  "NSEnumerator",
+  "NSError",
+  "NSLocale",
+  "NSSet",
+  "NSString",
+  "NSValue",
+  "block2",
+] }
+objc2-screen-capture-kit = { workspace = true, features = [
+  "SCShareableContent",
+  "SCStream",
+  "block2",
+  "dispatch2",
+  "libc",
+  "objc2-core-media",
+] }
+objc2-speech = { workspace = true, features = [
+  "SFSpeechRecognitionRequest",
+  "SFSpeechRecognitionResult",
+  "SFSpeechRecognitionTask",
+  "SFSpeechRecognitionTaskHint",
+  "SFSpeechRecognizer",
+  "SFTranscription",
+  "SFTranscriptionSegment",
+  "block2",
+  "objc2-avf-audio",
+] }
+
+[lints]
+workspace = true
