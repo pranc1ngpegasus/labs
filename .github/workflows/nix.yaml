@@ -1,0 +1,20 @@
+name: nix
+on:
+  pull_request:
+  push:
+    branches:
+      - "main"
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-nix
+  cancel-in-progress: true
+permissions:
+  contents: read
+  actions: write
+  id-token: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-nix
+      - run: nix flake check --print-build-logs
