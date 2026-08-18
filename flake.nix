@@ -99,6 +99,7 @@
 
           pre-commit.settings = {
             hooks = {
+              actionlint.enable = true;
               deadnix.enable = true;
               statix.enable = true;
               statix.excludes = [
@@ -115,6 +116,7 @@
               rustfmt.package = rustToolchain;
               swift-format.enable = true;
               taplo.enable = true;
+              yamlfmt.enable = true;
             };
             settings.global.excludes = [
               "koe/koe-native/generated/**"
