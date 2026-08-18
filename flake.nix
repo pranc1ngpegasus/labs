@@ -87,6 +87,14 @@
                 version
                 ;
             };
+            default = pkgs.symlinkJoin {
+              name = "labs-all";
+              paths = [
+                config.packages.sui
+                config.packages.koe
+                config.packages.ren
+              ];
+            };
           };
 
           pre-commit.settings = {
