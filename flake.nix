@@ -49,11 +49,37 @@
           rustToolchain = pkgs.rust-bin.stable.latest.default;
           craneLib = (inputs.crane.mkLib pkgs).overrideToolchain rustToolchain;
           src = craneLib.cleanCargoSource ./.;
+
+          # The whole workspace builds in a single derivation (see the
+          # package.nix files), so dependency artifacts are built once here
+          # and shared by packages and checks alike.
+          commonArgs = {
+            inherit src version;
+            pname = "labs-workspace";
+            strictDeps = true;
+          };
+          cargoArtifacts = craneLib.buildDepsOnly commonArgs;
         in
         {
           _module.args.pkgs = import inputs.nixpkgs {
             inherit system;
             overlays = [ inputs.rust-overlay.overlays.default ];
+          };
+
+          checks = {
+            fmt = craneLib.cargoFmt {
+              inherit src;
+              pname = "labs-workspace";
+            };
+            clippy = craneLib.cargoClippy {
+              inherit src cargoArtifacts;
+              pname = "labs-workspace";
+              cargoClippyExtraArgs = "--all-targets --all-features -- --deny warnings";
+            };
+            test = craneLib.cargoTest {
+              inherit src cargoArtifacts;
+              pname = "labs-workspace";
+            };
           };
 
           devShells.default = pkgs.mkShellNoCC {
@@ -69,6 +95,7 @@
                 craneLib
                 src
                 version
+                cargoArtifacts
                 ;
             };
             koe = import ./koe/package.nix {
@@ -77,6 +104,7 @@
                 craneLib
                 src
                 version
+                cargoArtifacts
                 ;
             };
             ren = import ./ren/package.nix {
@@ -85,6 +113,7 @@
                 craneLib
                 src
                 version
+                cargoArtifacts
                 ;
             };
             default = pkgs.symlinkJoin {
