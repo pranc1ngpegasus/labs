@@ -321,7 +321,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_immediately_is_clean() {
-        install_authorized_mic();
+        let _guard = install_authorized_mic().await;
         let output = unique_path("immediate");
         let mut pipeline = RecordingPipeline::start(test_config(&output))
             .await
@@ -344,7 +344,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_with_monitor_enabled_is_clean() {
-        install_authorized_mic();
+        let _guard = install_authorized_mic().await;
         let output = unique_path("monitor");
         let mut config = test_config(&output);
         config.monitor = true;
@@ -361,7 +361,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_after_audio_processes_all_frames() {
-        install_authorized_mic();
+        let _guard = install_authorized_mic().await;
         let output = unique_path("drain");
         let mut pipeline = RecordingPipeline::start(test_config(&output))
             .await
@@ -397,7 +397,7 @@ mod tests {
 
     #[tokio::test]
     async fn force_stop_does_not_corrupt_wav() {
-        install_authorized_mic();
+        let _guard = install_authorized_mic().await;
         let output = unique_path("force");
         let mut pipeline = RecordingPipeline::start(test_config(&output))
             .await
@@ -419,7 +419,7 @@ mod tests {
 
     #[tokio::test]
     async fn pause_then_stop_keeps_pre_pause_segments() {
-        install_authorized_mic();
+        let _guard = install_authorized_mic().await;
         let output = unique_path("pause-stop");
         let transcript = output.with_extension("txt");
         let mut config = test_config(&output);
@@ -457,7 +457,7 @@ mod tests {
 
     #[tokio::test]
     async fn double_stop_is_rejected() {
-        install_authorized_mic();
+        let _guard = install_authorized_mic().await;
         let output = unique_path("double");
         let mut pipeline = RecordingPipeline::start(test_config(&output))
             .await
@@ -470,7 +470,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_emits_stopping_then_stopped() {
-        install_authorized_mic();
+        let _guard = install_authorized_mic().await;
         let output = unique_path("status");
         let mut pipeline = RecordingPipeline::start(test_config(&output))
             .await

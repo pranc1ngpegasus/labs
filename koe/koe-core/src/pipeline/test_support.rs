@@ -6,8 +6,32 @@ use koe_ffi::{
     AppInfo, NativeProvider, OutputFormat, Permission, PermissionStatus, TranscriptFormat,
     register_native_provider,
 };
+use tokio::sync::{Mutex, MutexGuard};
 
 use super::PipelineConfig;
+
+/// Installs a [`NativeProvider`] and returns a guard that must be held for the
+/// whole test body.
+///
+/// `koe-ffi` keeps the provider in a single process-wide slot, so tests that
+/// install different permissions must not run concurrently or one test's
+/// provider can be observed by another. Folding the guard into the install
+/// makes it impossible to introduce that race: acquiring the guard is the only
+/// way to install.
+pub async fn install_provider(
+    permissions: Vec<(Permission, PermissionStatus)>
+) -> MutexGuard<'static, ()> {
+    static PROVIDER_LOCK: Mutex<()> = Mutex::const_new(());
+    let guard = PROVIDER_LOCK.lock().await;
+    koe_ffi::set_capture_stub(true);
+    koe_ffi::set_transcription_stub(true);
+    register_native_provider(Box::new(TestProvider { permissions }));
+    guard
+}
+
+pub async fn install_authorized_mic() -> MutexGuard<'static, ()> {
+    install_provider(vec![(Permission::Microphone, PermissionStatus::Authorized)]).await
+}
 
 pub struct TestProvider {
     permissions: Vec<(Permission, PermissionStatus)>,
@@ -34,16 +58,6 @@ impl NativeProvider for TestProvider {
     fn enumerate_apps(&self) -> Vec<AppInfo> {
         Vec::new()
     }
-}
-
-pub fn install_provider(permissions: Vec<(Permission, PermissionStatus)>) {
-    koe_ffi::set_capture_stub(true);
-    koe_ffi::set_transcription_stub(true);
-    register_native_provider(Box::new(TestProvider { permissions }));
-}
-
-pub fn install_authorized_mic() {
-    install_provider(vec![(Permission::Microphone, PermissionStatus::Authorized)]);
 }
 
 pub fn unique_path(label: &str) -> PathBuf {

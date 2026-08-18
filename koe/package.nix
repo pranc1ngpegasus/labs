@@ -16,25 +16,17 @@
   stdenv,
   craneLib, # already overridden with the repo's toolchain (rust-overlay)
   src, # filtered workspace root (must contain Cargo.toml + Cargo.lock)
+  cargoArtifacts, # workspace dependency artifacts, built once in the root flake
   version ? "0.0.0",
 }:
 let
-  commonArgs = {
-    inherit src version;
+  # Builds every binary in the workspace (ren/koe/sui once they are members).
+  workspaceBuild = craneLib.buildPackage {
+    inherit src version cargoArtifacts;
     pname = "labs-workspace";
     strictDeps = true;
+    doCheck = false;
   };
-
-  cargoArtifacts = craneLib.buildDepsOnly commonArgs;
-
-  # Builds every binary in the workspace (ren/koe/sui once they are members).
-  workspaceBuild = craneLib.buildPackage (
-    commonArgs
-    // {
-      inherit cargoArtifacts;
-      doCheck = false;
-    }
-  );
 in
 stdenv.mkDerivation {
   pname = "koe";

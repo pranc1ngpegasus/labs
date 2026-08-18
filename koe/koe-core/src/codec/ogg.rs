@@ -386,6 +386,10 @@ mod tests {
 
     #[test]
     fn encode_latency_under_one_ms_per_960_frames() {
+        // 960 frames @ 48 kHz is a 20 ms block; the 1 ms budget keeps encoding
+        // far below real time even on modest hardware.
+        const MAX_ENCODE_BLOCK_US: u128 = 1_000;
+
         let comments = OggComments::for_session(&AudioSourceConfig::Microphone, "en-US");
         let mut encoder = OggEncoder::with_comments(0.4, &comments).expect("encoder");
         let block = sine_stereo(960, 440.0);
@@ -393,16 +397,23 @@ mod tests {
         // Warm up (headers + codebook).
         let _ = encoder.encode(&block).expect("warmup");
 
-        let iterations = 100_u32;
-        let start = Instant::now();
+        // Measure per-block latency and assert on the median (odd sample count
+        // so the middle element is the true median) so one or two scheduler
+        // hiccups (parallel test compilation, loaded CI host) don't flake the
+        // real-time budget. A genuine encoder regression pushes the median
+        // well past the budget, so the central tendency still catches it.
+        let iterations = 101_usize;
+        let mut per_block_us = Vec::with_capacity(iterations);
         for _ in 0..iterations {
+            let start = Instant::now();
             let _ = encoder.encode(&block).expect("encode");
+            per_block_us.push(start.elapsed().as_micros());
         }
-        let elapsed = start.elapsed();
-        let per_block_us = elapsed.as_micros() / u128::from(iterations);
+        per_block_us.sort_unstable();
+        let median_us = per_block_us[iterations / 2];
         assert!(
-            per_block_us < 1_000,
-            "encode latency {per_block_us} µs/block exceeds 1 ms budget"
+            median_us < MAX_ENCODE_BLOCK_US,
+            "median encode latency {median_us} µs/block exceeds 1 ms budget"
         );
         let _ = encoder.finalize().expect("finalize");
     }
