@@ -65,7 +65,7 @@ symphonia = { version = "0.6.1", default-features = false }
 tantivy = "0.26.1"
 thiserror = "2.0.20"
 tokio = "1.53.1"
-toml = "0.8.23"
+toml = "1.1.4"
 toml_edit = "0.25.13"
 ulid = "3.0.0"
 unicode-width = "0.2.2"
