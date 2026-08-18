@@ -1,0 +1,18 @@
+[package]
+description = "Agent loop: advertise tool schemas, dispatch model tool_calls, feed results back."
+edition.workspace = true
+name = "sui-agent"
+version.workspace = true
+
+[dependencies]
+serde_json = { workspace = true }
+sui-llm = { workspace = true }
+sui-tools = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock = { workspace = true }
+
+[lints]
+workspace = true

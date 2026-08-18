@@ -1,0 +1,34 @@
+[package]
+description = "Agent tool-calling foundation: lexical code search, one-shot and session bash, Git unified-diff edits, and a thin tool registry."
+edition.workspace = true
+name = "sui-tools"
+version.workspace = true
+
+[dependencies]
+gitpatch = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tantivy = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = [
+  "io-util",
+  "macros",
+  "process",
+  "rt",
+  "sync",
+  "time",
+] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = [
+  "io-util",
+  "macros",
+  "process",
+  "rt",
+  "rt-multi-thread",
+  "sync",
+  "time",
+] }
+
+[lints]
+workspace = true

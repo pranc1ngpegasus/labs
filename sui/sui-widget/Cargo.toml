@@ -1,0 +1,13 @@
+[package]
+description = "TUI widgets for sui — text-input prompt with word wrap and cursor tracking built on ratatui."
+edition.workspace = true
+name = "sui-widget"
+version.workspace = true
+
+[dependencies]
+ratatui = { workspace = true }
+sui-theme = { workspace = true }
+unicode-width = { workspace = true }
+
+[lints]
+workspace = true

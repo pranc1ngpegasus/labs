@@ -1,0 +1,31 @@
+[package]
+description = "Application layer for sui — terminal run-loop, event handling, and prompt state management."
+edition.workspace = true
+name = "sui-app"
+version.workspace = true
+
+[dependencies]
+codewandler-markdown = { workspace = true }
+codewandler-markdown-ratatui = { workspace = true }
+crossterm = { workspace = true }
+futures = { workspace = true }
+ratatui = { workspace = true, features = ["crossterm"] }
+sui-agent = { workspace = true }
+sui-llm = { workspace = true }
+sui-theme = { workspace = true }
+sui-tools = { workspace = true }
+sui-widget = { workspace = true }
+tokio = { workspace = true, features = ["rt", "time"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tokio = { workspace = true, features = [
+  "macros",
+  "rt",
+  "rt-multi-thread",
+  "time",
+] }
+wiremock = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,13 @@
+[package]
+description = "Central colour constants and derived styles for the sui TUI."
+edition.workspace = true
+name = "sui-theme"
+version.workspace = true
+
+[dependencies]
+ratatui = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+toml = { workspace = true }
+
+[lints]
+workspace = true

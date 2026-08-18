@@ -1,0 +1,18 @@
+[package]
+description = "Coding agent — 粋・推・遂. A lightweight, robust coding agent with a workflow engine and memory features."
+edition.workspace = true
+name = "sui"
+version.workspace = true
+
+[dependencies]
+color-eyre = { workspace = true }
+ratatui = { workspace = true, features = ["crossterm"] }
+sui-app = { workspace = true }
+sui-llm = { workspace = true }
+sui-theme = { workspace = true }
+sui-tools = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

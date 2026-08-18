@@ -30,7 +30,25 @@
           ...
         }:
         let
+          version =
+            let
+              d = inputs.self.lastModifiedDate;
+              dezero =
+                s:
+                let
+                  m = builtins.match "0(.*)" s;
+                in
+                if m == null then s else builtins.head m;
+              date = "${builtins.substring 0 4 d}.${dezero (builtins.substring 4 2 d)}.${
+                dezero (builtins.substring 6 2 d)
+              }";
+              rev = inputs.self.shortRev or inputs.self.dirtyShortRev or "dirty";
+            in
+            "${date}-${rev}";
+
           rustToolchain = pkgs.rust-bin.stable.latest.default;
+          craneLib = (inputs.crane.mkLib pkgs).overrideToolchain rustToolchain;
+          src = craneLib.cleanCargoSource ./.;
         in
         {
           _module.args.pkgs = import inputs.nixpkgs {
@@ -42,6 +60,17 @@
             inputsFrom = [ config.pre-commit.devShell ];
 
             packages = [ rustToolchain ];
+          };
+
+          packages = {
+            sui = import ./sui/package.nix {
+              inherit (pkgs) stdenv;
+              inherit
+                craneLib
+                src
+                version
+                ;
+            };
           };
 
           pre-commit.settings = {
