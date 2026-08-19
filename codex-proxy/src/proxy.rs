@@ -266,6 +266,12 @@ async fn forward(
                 builder = builder.header(name, value);
             }
         }
+        // WHAM streams `/responses` as SSE but omits `Content-Type`. Streaming
+        // clients need `text/event-stream` to recognize the body, so label it
+        // when the successful upstream response left it unset.
+        if let Some(content_type) = injected_content_type(status, response.headers()) {
+            builder = builder.header(reqwest::header::CONTENT_TYPE, content_type);
+        }
         // Stream the upstream body through so long-lived SSE conversations are
         // relayed incrementally rather than buffered whole.
         let debug = state.debug;
@@ -281,6 +287,21 @@ async fn forward(
             .body(Body::from_stream(stream))
             .map_err(|e| ProxyError::Body(std::io::Error::other(e)));
     }
+}
+
+/// The `Content-Type` to inject into a forwarded upstream response, if any.
+///
+/// The `ChatGPT`/WHAM backend streams `/responses` as Server-Sent Events but
+/// returns no `Content-Type`, which makes streaming clients fail to recognize
+/// the body and retry. Returns `text/event-stream` when a successful upstream
+/// response omitted the header, and `None` when it already set one or the
+/// response is an error (whose body should be relayed as-is).
+fn injected_content_type(
+    status: StatusCode,
+    headers: &HeaderMap,
+) -> Option<HeaderValue> {
+    (status.is_success() && !headers.contains_key(reqwest::header::CONTENT_TYPE))
+        .then(|| HeaderValue::from_static("text/event-stream"))
 }
 
 /// Computes the `ChatGPT-Account-Id` header value, if an account is known.
@@ -443,5 +464,33 @@ mod tests {
         let body = b"not json at all";
         let out = normalize_responses_body(bytes::Bytes::from_static(body));
         assert_eq!(out.as_ref(), body);
+    }
+
+    #[test]
+    fn injects_event_stream_when_upstream_omits_content_type() {
+        let headers = HeaderMap::new();
+        assert_eq!(
+            injected_content_type(StatusCode::OK, &headers),
+            Some(HeaderValue::from_static("text/event-stream"))
+        );
+    }
+
+    #[test]
+    fn keeps_upstream_content_type_when_present() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            reqwest::header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+        assert_eq!(injected_content_type(StatusCode::OK, &headers), None);
+    }
+
+    #[test]
+    fn does_not_inject_content_type_on_error_status() {
+        let headers = HeaderMap::new();
+        assert_eq!(
+            injected_content_type(StatusCode::BAD_REQUEST, &headers),
+            None
+        );
     }
 }
