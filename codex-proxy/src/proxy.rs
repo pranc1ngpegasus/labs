@@ -251,13 +251,13 @@ async fn forward(
 
         if state.debug {
             eprintln!("[codex-proxy] < status: {status}");
-            eprintln!(
-                "[codex-proxy] < content-type: {:?}",
-                response
-                    .headers()
-                    .get(reqwest::header::CONTENT_TYPE)
-                    .and_then(|value| value.to_str().ok())
-            );
+            eprintln!("[codex-proxy] < upstream headers:");
+            for (name, value) in response.headers() {
+                eprintln!(
+                    "[codex-proxy]     {name}: {}",
+                    value.to_str().unwrap_or("<non-ascii>")
+                );
+            }
         }
 
         let mut builder = Response::builder().status(status);
@@ -271,6 +271,17 @@ async fn forward(
         // when the successful upstream response left it unset.
         if let Some(content_type) = injected_content_type(status, response.headers()) {
             builder = builder.header(reqwest::header::CONTENT_TYPE, content_type);
+        }
+        if state.debug {
+            eprintln!("[codex-proxy] < downstream headers sent to client:");
+            if let Some(headers) = builder.headers_ref() {
+                for (name, value) in headers {
+                    eprintln!(
+                        "[codex-proxy]     {name}: {}",
+                        value.to_str().unwrap_or("<non-ascii>")
+                    );
+                }
+            }
         }
         // Stream the upstream body through so long-lived SSE conversations are
         // relayed incrementally rather than buffered whole.

@@ -340,7 +340,11 @@ async fn responses_moves_system_message_into_instructions_upstream() {
         .expect("response");
 
     assert_eq!(response.status(), StatusCode::OK);
-    let body = seen_body.lock().expect("lock").clone().expect("captured body");
+    let body = seen_body
+        .lock()
+        .expect("lock")
+        .clone()
+        .expect("captured body");
     assert_eq!(body["instructions"], "rules");
     let roles: Vec<&str> = body["input"]
         .as_array()
@@ -349,6 +353,72 @@ async fn responses_moves_system_message_into_instructions_upstream() {
         .filter_map(|m| m["role"].as_str())
         .collect();
     assert_eq!(roles, ["user"]);
+}
+
+#[tokio::test]
+async fn responses_injects_event_stream_content_type_when_upstream_omits_it() {
+    let token = MockServer::start().await;
+    mock_token_endpoint(&token).await;
+
+    // The ChatGPT/WHAM backend returns a 200 SSE body with no Content-Type and
+    // delimits it by closing the connection. Reproduce that exactly with a raw
+    // TCP server so we can assert the proxy labels the stream for the client.
+    let sse_body = "event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n";
+    let backend_uri = spawn_raw_sse_backend(sse_body).await;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let auth_file = write_expired_auth(dir.path());
+    let auth = Auth::load(&auth_file, &format!("{}/oauth/token", token.uri()))
+        .await
+        .expect("auth");
+    let app = proxy::router(auth, &backend_uri, TEST_CLIENT_KEY);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/responses")
+                .header("authorization", format!("Bearer {TEST_CLIENT_KEY}"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"model":"gpt-5.1","input":"hi"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok()),
+        Some("text/event-stream")
+    );
+    let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+        .await
+        .expect("read body");
+    assert_eq!(bytes.as_ref(), sse_body.as_bytes());
+}
+
+/// Spawns a one-shot raw TCP HTTP/1.1 server that replies with `200 OK`, no
+/// `Content-Type`, and `body`, delimiting it by closing the connection — the
+/// shape the WHAM backend uses. Returns its base URL.
+async fn spawn_raw_sse_backend(body: &'static str) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        if let Ok((mut socket, _)) = listener.accept().await {
+            let mut buf = [0u8; 8192];
+            let _ = socket.read(&mut buf).await;
+            let response = format!("HTTP/1.1 200 OK\r\nconnection: close\r\n\r\n{body}");
+            let _ = socket.write_all(response.as_bytes()).await;
+            let _ = socket.shutdown().await;
+        }
+    });
+    format!("http://{addr}")
 }
 
 #[tokio::test]
