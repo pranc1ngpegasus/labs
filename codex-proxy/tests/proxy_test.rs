@@ -15,6 +15,8 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const EXPIRED_ACCESS: &str = "eyJhbGciOiJub25lIn0.eyJleHAiOjF9.sig";
 const FRESH_ACCESS: &str = "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTl9.sig";
+/// The client API key the test proxy requires.
+const TEST_CLIENT_KEY: &str = "test-client-key";
 
 /// Writes an auth.json with an expired token into `dir` and returns its path.
 fn write_expired_auth(dir: &std::path::Path) -> std::path::PathBuf {
@@ -45,7 +47,7 @@ async fn build_router(
     let auth = Auth::load(&auth_file, &format!("{}/oauth/token", token_server.uri()))
         .await
         .map_err(|e| e.to_string())?;
-    let app = proxy::router(auth, &backend_server.uri());
+    let app = proxy::router(auth, &backend_server.uri(), TEST_CLIENT_KEY);
     Ok((app, dir))
 }
 
@@ -103,6 +105,7 @@ async fn forwards_responses_with_refreshed_token() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/responses")
+                .header("authorization", format!("Bearer {TEST_CLIENT_KEY}"))
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"model":"gpt-5.1","input":[]}"#))
                 .expect("request"),
@@ -137,6 +140,7 @@ async fn forwards_models_with_schema_rewrite() {
             Request::builder()
                 .method("GET")
                 .uri("/v1/models")
+                .header("authorization", format!("Bearer {TEST_CLIENT_KEY}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -178,6 +182,7 @@ async fn models_relays_upstream_error_body() {
             Request::builder()
                 .method("GET")
                 .uri("/v1/models")
+                .header("authorization", format!("Bearer {TEST_CLIENT_KEY}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -221,6 +226,7 @@ async fn retries_once_after_401_and_force_refresh() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/responses")
+                .header("authorization", format!("Bearer {TEST_CLIENT_KEY}"))
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"model":"gpt-5.1","input":[]}"#))
                 .expect("request"),
@@ -278,6 +284,7 @@ async fn concurrent_expiry_misses_refresh_only_once() {
                 Request::builder()
                     .method("POST")
                     .uri("/v1/responses")
+                    .header("authorization", format!("Bearer {TEST_CLIENT_KEY}"))
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"model":"gpt-5.1","input":[]}"#))
                     .expect("request"),
@@ -292,4 +299,59 @@ async fn concurrent_expiry_misses_refresh_only_once() {
         assert_eq!(status, StatusCode::OK);
     }
     assert_eq!(refresh_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn missing_or_wrong_client_key_is_rejected() {
+    let backend = MockServer::start().await;
+    let token = MockServer::start().await;
+
+    // Because these requests are rejected before any token is needed, the
+    // token endpoint must never be contacted.
+    Mock::given(method("POST"))
+        .and(path("/oauth/token"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&token)
+        .await;
+
+    // The backend must never be reached when the client key is wrong.
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&backend)
+        .await;
+
+    let (app, _dir) = build_router(&backend, &token).await.expect("router");
+
+    // No Authorization header at all.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/responses")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"model":"gpt-5.1","input":[]}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    // A wrong Authorization header.
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/responses")
+                .header("authorization", "Bearer wrong-key")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"model":"gpt-5.1","input":[]}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }

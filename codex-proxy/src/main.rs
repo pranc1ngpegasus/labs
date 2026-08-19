@@ -3,6 +3,8 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use clap::Parser;
 use tokio::net::TcpListener;
 
@@ -41,6 +43,10 @@ struct Cli {
     /// `ChatGPT` バックエンドの基底 URL。
     #[arg(long, default_value = DEFAULT_BACKEND)]
     backend: String,
+
+    /// クライアント API キー。未指定なら起動時に生成して表示する。
+    #[arg(long)]
+    api_key: Option<String>,
 }
 
 fn resolve_auth_file(cli: &Cli) -> PathBuf {
@@ -75,6 +81,11 @@ async fn run() -> Result<ExitCode, String> {
         .await
         .map_err(|e| auth_load_message(e, &auth_file))?;
 
+    let client_api_key = match cli.api_key {
+        Some(key) => key,
+        None => generate_client_key()?,
+    };
+
     let addr = format!("{}:{}", cli.host, cli.port);
     let listener = TcpListener::bind(&addr)
         .await
@@ -83,8 +94,9 @@ async fn run() -> Result<ExitCode, String> {
         .local_addr()
         .map_err(|e| format!("no local addr: {e}"))?;
 
-    let app = proxy::router(auth, &backend);
+    let app = proxy::router(auth, &backend, &client_api_key);
     println!("codex-proxy listening on http://{local}/v1");
+    println!("  client API key : {client_api_key}");
     println!("  POST /v1/responses -> {backend}/responses");
     println!("  GET  /v1/models    -> {backend}/models");
 
@@ -93,6 +105,19 @@ async fn run() -> Result<ExitCode, String> {
         .await
         .map_err(|e| format!("server error: {e}"))?;
     Ok(ExitCode::SUCCESS)
+}
+
+/// Generates a fresh client API key from 32 bytes of OS randomness, rendered
+/// as unpadded base64url. The caller prints it for the operator to configure
+/// in the client (e.g. `sui`'s `[llm] api_key`).
+///
+/// # Errors
+///
+/// Returns an error if the operating system cannot supply randomness.
+fn generate_client_key() -> Result<String, String> {
+    let mut bytes = [0u8; 32];
+    getrandom::getrandom(&mut bytes).map_err(|e| format!("failed to generate API key: {e}"))?;
+    Ok(URL_SAFE_NO_PAD.encode(bytes))
 }
 
 /// Completes when SIGINT (Ctrl-C) or SIGTERM is received, allowing in-flight

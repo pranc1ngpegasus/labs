@@ -149,7 +149,7 @@ impl Auth {
 
     /// Overrides the clock (unix seconds). Test-only.
     #[cfg(test)]
-    pub fn set_now(
+    fn set_now(
         &mut self,
         now: Arc<dyn Fn() -> i64 + Send + Sync>,
     ) {
@@ -157,7 +157,7 @@ impl Auth {
     }
 
     /// The current account id, if any.
-    pub async fn account_id(&self) -> Option<String> {
+    pub(crate) async fn account_id(&self) -> Option<String> {
         self.state.read().await.account_id.clone()
     }
 
@@ -166,7 +166,7 @@ impl Auth {
     /// # Errors
     ///
     /// Returns [`AuthError`] when a refresh is needed but fails.
-    pub async fn access_token(&self) -> Result<String, AuthError> {
+    pub(crate) async fn access_token(&self) -> Result<String, AuthError> {
         self.ensure_valid().await?;
         let state = self.state.read().await;
         Ok(state.access_token.clone())
@@ -182,16 +182,29 @@ impl Auth {
     ///
     /// Returns [`AuthError::Refresh`] if the token endpoint rejects us, or
     /// [`AuthError::MissingRefresh`] if no refresh token is available.
-    pub async fn ensure_valid(&self) -> Result<(), AuthError> {
+    pub(crate) async fn ensure_valid(&self) -> Result<(), AuthError> {
         if !self.expiring_soon().await {
             return Ok(());
         }
         let _guard = self.refresh_lock.lock().await;
         // Another caller may have refreshed while we waited for the lock.
         if self.expiring_soon().await {
-            self.refresh().await?;
+            self.do_refresh().await?;
         }
         Ok(())
+    }
+
+    /// Refreshes unconditionally. Used when the backend rejects the current
+    /// token (401); this also flows through the single-flight lock so a burst
+    /// of 401s cannot stampede the token endpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AuthError::Refresh`] on transport or non-2xx from the endpoint,
+    /// or [`AuthError::MissingRefresh`] when there is no refresh token.
+    pub(crate) async fn force_refresh(&self) -> Result<(), AuthError> {
+        let _guard = self.refresh_lock.lock().await;
+        self.do_refresh().await
     }
 
     /// Returns true when the current token is absent or within the safety
@@ -201,14 +214,15 @@ impl Auth {
         state.access_token.is_empty() || state.expires_at_secs <= (self.now)() + SAFETY_MARGIN_SECS
     }
 
-    /// Exercises a refresh unconditionally and swaps the in-memory state.
+    /// Swaps the in-memory token state after a successful refresh. Callers must
+    /// hold [`Self::refresh_lock`].
     ///
     /// # Errors
     ///
     /// Returns [`AuthError::Refresh`] on transport or non-2xx from the endpoint,
     /// or [`AuthError::MissingRefresh`] when there is no refresh token.
     #[allow(clippy::significant_drop_tightening)] // write guard held across the mutation block
-    pub async fn refresh(&self) -> Result<(), AuthError> {
+    async fn do_refresh(&self) -> Result<(), AuthError> {
         let refresh_token = {
             let state = self.state.read().await;
             state.refresh_token.clone()

@@ -15,10 +15,12 @@
 use axum::Router;
 use axum::body::Body;
 use axum::extract::{Request, State};
-use axum::http::{HeaderName, HeaderValue, StatusCode};
-use axum::response::Response;
+use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
 
 use crate::auth::Auth;
 use crate::error::ProxyError;
@@ -32,17 +34,23 @@ struct AppState {
     auth: Auth,
     http: reqwest::Client,
     backend: String,
+    /// SHA-256 of the client API key clients must present on every call.
+    client_key_hash: [u8; 32],
 }
 
-/// Builds the application router.
+/// Builds the application router. `client_api_key` is the key that calling
+/// clients must present as `Authorization: Bearer <key>`; requests without a
+/// matching key are rejected with 401.
 pub fn router(
     auth: Auth,
     backend: &str,
+    client_api_key: &str,
 ) -> Router {
     let state = AppState {
         auth,
         http: reqwest::Client::new(),
         backend: backend.trim_end_matches('/').to_owned(),
+        client_key_hash: hash_key(client_api_key),
     };
     Router::new()
         .route("/v1/responses", post(responses))
@@ -55,6 +63,9 @@ async fn responses(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, ProxyError> {
+    if !client_authorized(request.headers(), &state.client_key_hash) {
+        return Ok(unauthorized());
+    }
     let content_type = request
         .headers()
         .get(axum::http::header::CONTENT_TYPE)
@@ -72,6 +83,9 @@ async fn models(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, ProxyError> {
+    if !client_authorized(request.headers(), &state.client_key_hash) {
+        return Ok(unauthorized());
+    }
     let upstream_url = format!("{}/models", state.backend);
     let access = state.auth.access_token().await?;
     let account_header = account_header_value(&state).await;
@@ -145,7 +159,7 @@ async fn forward(
 
         if status == StatusCode::UNAUTHORIZED && attempt < MAX_ATTEMPTS {
             // The token may have been revoked; force a refresh and retry once.
-            state.auth.refresh().await?;
+            state.auth.force_refresh().await?;
             continue;
         }
 
@@ -175,6 +189,47 @@ async fn account_header_value(state: &AppState) -> Option<HeaderValue> {
 
 fn bearer(access: &str) -> HeaderValue {
     HeaderValue::from_str(&format!("Bearer {access}")).unwrap_or(HeaderValue::from_static(""))
+}
+
+/// Returns true when the request presents the expected client API key.
+///
+/// The key is extracted from the `Authorization: Bearer <key>` header and the
+/// SHA-256 digest is compared in constant time, so an attacker cannot learn
+/// the key (or its length) by timing the rejection.
+fn client_authorized(
+    headers: &HeaderMap,
+    expected_hash: &[u8; 32],
+) -> bool {
+    let Some(authorization) = headers.get(axum::http::header::AUTHORIZATION) else {
+        return false;
+    };
+    let Ok(header) = authorization.to_str() else {
+        return false;
+    };
+    let Some(key) = header.strip_prefix("Bearer ") else {
+        return false;
+    };
+    hash_key(key).ct_eq(expected_hash).into()
+}
+
+/// A constant-time-friendly digest of a client key.
+fn hash_key(key: &str) -> [u8; 32] {
+    let digest = Sha256::digest(key.as_bytes());
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&digest);
+    out
+}
+
+/// An OpenAI-style 401 response for a missing or wrong client key.
+fn unauthorized() -> Response {
+    let body = serde_json::json!({
+        "error": {
+            "message": "invalid API key",
+            "type": "invalid_request_error",
+            "code": "invalid_api_key",
+        }
+    });
+    (StatusCode::UNAUTHORIZED, axum::Json(body)).into_response()
 }
 
 /// Whether a backend response header is safe to relay to the client.
