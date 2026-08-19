@@ -231,3 +231,65 @@ async fn retries_once_after_401_and_force_refresh() {
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
 }
+
+#[tokio::test]
+async fn concurrent_expiry_misses_refresh_only_once() {
+    let backend = MockServer::start().await;
+    let token = MockServer::start().await;
+
+    // Count token-endpoint refresh calls.
+    let refresh_calls = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let front_refresh = Arc::clone(&refresh_calls);
+    Mock::given(method("POST"))
+        .and(path("/oauth/token"))
+        .respond_with(move |_req: &wiremock::Request| {
+            front_refresh.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": FRESH_ACCESS,
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            }))
+        })
+        .expect(1)
+        .mount(&token)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "resp_n",
+            "object": "response",
+            "status": "completed",
+            "output": []
+        })))
+        .expect(8)
+        .mount(&backend)
+        .await;
+
+    let (app, _dir) = build_router(&backend, &token).await.expect("router");
+
+    // Fire 8 concurrent requests while the initial token is expired; the
+    // single-flight refresh must hit the token endpoint exactly once.
+    let mut tasks = Vec::new();
+    for _ in 0..8 {
+        let app = app.clone();
+        tasks.push(tokio::spawn(async move {
+            app.oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/responses")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"model":"gpt-5.1","input":[]}"#))
+                    .expect("request"),
+            )
+            .await
+            .expect("response")
+            .status()
+        }));
+    }
+    for task in tasks {
+        let status = task.await.expect("task");
+        assert_eq!(status, StatusCode::OK);
+    }
+    assert_eq!(refresh_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+}

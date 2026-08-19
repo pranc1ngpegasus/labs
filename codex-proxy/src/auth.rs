@@ -73,6 +73,9 @@ pub struct Auth {
     http: Client,
     token_url: String,
     state: Arc<RwLock<TokenState>>,
+    /// Serializes refresh so concurrent expiry misses don't stampede the token
+    /// endpoint with simultaneous requests.
+    refresh_lock: Arc<tokio::sync::Mutex<()>>,
     /// Injectable clock: returns unix epoch seconds. Defaults to wall clock.
     now: Arc<dyn Fn() -> i64 + Send + Sync>,
 }
@@ -139,6 +142,7 @@ impl Auth {
             http: Client::new(),
             token_url: token_url.to_owned(),
             state: Arc::new(RwLock::new(state)),
+            refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             now: Arc::new(system_now),
         })
     }
@@ -170,11 +174,20 @@ impl Auth {
 
     /// Refreshes the access token if it is within the safety margin of expiry.
     ///
+    /// Concurrent callers that observe an expiring token serialize on a single
+    /// refresh: each re-checks after acquiring the lock, so only the first
+    /// waiter actually hits the token endpoint.
+    ///
     /// # Errors
     ///
     /// Returns [`AuthError::Refresh`] if the token endpoint rejects us, or
     /// [`AuthError::MissingRefresh`] if no refresh token is available.
     pub async fn ensure_valid(&self) -> Result<(), AuthError> {
+        if !self.expiring_soon().await {
+            return Ok(());
+        }
+        let _guard = self.refresh_lock.lock().await;
+        // Another caller may have refreshed while we waited for the lock.
         if self.expiring_soon().await {
             self.refresh().await?;
         }

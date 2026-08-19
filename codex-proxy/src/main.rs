@@ -89,9 +89,38 @@ async fn run() -> Result<ExitCode, String> {
     println!("  GET  /v1/models    -> {backend}/models");
 
     axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .map_err(|e| format!("server error: {e}"))?;
     Ok(ExitCode::SUCCESS)
+}
+
+/// Completes when SIGINT (Ctrl-C) or SIGTERM is received, allowing in-flight
+/// requests (e.g. long-running SSE) to drain before the server stops.
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {},
+            () = sigterm() => {},
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+/// Resolves when a SIGTERM is delivered. If the handler cannot be registered
+/// the future simply never resolves (Ctrl-C is still handled by the caller).
+#[cfg(unix)]
+async fn sigterm() {
+    match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+        Ok(mut signal) => {
+            signal.recv().await;
+        },
+        Err(_) => std::future::pending::<()>().await,
+    }
 }
 
 fn auth_load_message(

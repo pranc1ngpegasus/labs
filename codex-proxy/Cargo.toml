@@ -27,7 +27,6 @@ tokio = { workspace = true, features = [
   "net",
   "rt-multi-thread",
   "signal",
-  "time",
 ] }
 
 [dev-dependencies]
