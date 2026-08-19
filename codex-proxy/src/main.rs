@@ -44,8 +44,8 @@ struct Cli {
     #[arg(long, default_value = DEFAULT_BACKEND)]
     backend: String,
 
-    /// クライアント API キー。未指定なら起動時に生成して表示する。
-    #[arg(long)]
+    /// クライアント API キー。未指定なら `CODEX_PROXY_API_KEY` を参照し、それも未指定なら起動時に生成する。
+    #[arg(long, env = "CODEX_PROXY_API_KEY")]
     api_key: Option<String>,
 }
 
