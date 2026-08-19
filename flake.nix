@@ -22,6 +22,8 @@
         inputs.treefmt-nix.flakeModule
       ];
 
+      flake.homeManagerModules.codex-proxy = ./codex-proxy/home-manager.nix;
+
       perSystem =
         {
           config,
