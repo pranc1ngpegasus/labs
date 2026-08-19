@@ -18,6 +18,7 @@ use axum::extract::{Request, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
+use futures::StreamExt;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
@@ -28,6 +29,10 @@ use crate::error::ProxyError;
 /// Headers that describe the `ChatGPT` account and must be attached upstream.
 const ACCOUNT_HEADER: &str = "ChatGPT-Account-Id";
 
+/// Environment variable that, when set to a truthy value, streams the upstream
+/// request/response wire to stderr for debugging (see [`debug_enabled`]).
+const DEBUG_ENV: &str = "CODEX_PROXY_DEBUG";
+
 /// State shared by all handlers.
 #[derive(Clone)]
 struct AppState {
@@ -36,6 +41,8 @@ struct AppState {
     backend: String,
     /// SHA-256 of the client API key clients must present on every call.
     client_key_hash: [u8; 32],
+    /// When true, the upstream request/response wire is logged to stderr.
+    debug: bool,
 }
 
 /// Builds the application router. `client_api_key` is the key that calling
@@ -51,11 +58,25 @@ pub fn router(
         http: reqwest::Client::new(),
         backend: backend.trim_end_matches('/').to_owned(),
         client_key_hash: hash_key(client_api_key),
+        debug: debug_enabled(),
     };
     Router::new()
         .route("/v1/responses", post(responses))
         .route("/v1/models", get(models))
         .with_state(state)
+}
+
+/// Whether upstream wire logging is enabled via [`DEBUG_ENV`].
+///
+/// Any value other than unset, empty, `0`, or `false` (case-insensitive)
+/// enables it, so `CODEX_PROXY_DEBUG=1` is the ergonomic switch.
+fn debug_enabled() -> bool {
+    std::env::var(DEBUG_ENV).is_ok_and(|value| {
+        let value = value.trim();
+        !value.is_empty()
+            && !value.eq_ignore_ascii_case("0")
+            && !value.eq_ignore_ascii_case("false")
+    })
 }
 
 /// Forwards `POST /v1/responses` to the backend.
@@ -198,6 +219,10 @@ async fn forward(
     content_type: Option<String>,
     body: bytes::Bytes,
 ) -> Result<Response, ProxyError> {
+    if state.debug {
+        eprintln!("[codex-proxy] > POST {upstream_url}");
+        eprintln!("[codex-proxy] > body: {}", String::from_utf8_lossy(&body));
+    }
     let mut attempt = 0;
     loop {
         attempt += 1;
@@ -224,6 +249,17 @@ async fn forward(
             continue;
         }
 
+        if state.debug {
+            eprintln!("[codex-proxy] < status: {status}");
+            eprintln!(
+                "[codex-proxy] < content-type: {:?}",
+                response
+                    .headers()
+                    .get(reqwest::header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok())
+            );
+        }
+
         let mut builder = Response::builder().status(status);
         for (name, value) in response.headers() {
             if is_forwardable_header(name) {
@@ -232,7 +268,15 @@ async fn forward(
         }
         // Stream the upstream body through so long-lived SSE conversations are
         // relayed incrementally rather than buffered whole.
-        let stream = response.bytes_stream();
+        let debug = state.debug;
+        let stream = response.bytes_stream().inspect(move |item| {
+            if debug {
+                match item {
+                    Ok(chunk) => eprint!("{}", String::from_utf8_lossy(chunk)),
+                    Err(error) => eprintln!("\n[codex-proxy] < stream error: {error}"),
+                }
+            }
+        });
         return builder
             .body(Body::from_stream(stream))
             .map_err(|e| ProxyError::Body(std::io::Error::other(e)));
