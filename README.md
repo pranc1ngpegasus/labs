@@ -64,10 +64,47 @@ tool calling and the memory engine live in [docs/research/](./sui/docs/research)
 
 **Crate layout:** `sui` (binary) / `sui-app` (TUI) / `sui-agent` (turn loop) / `sui-llm` (wire format) / `sui-tools` (tool execution & search) / `sui-theme` / `sui-widget` / `sui-workflow` (workflow engine)
 
+### [codex-proxy](./codex-proxy) — 常駐 OAuth プロキシ
+
+A resident HTTP proxy that keeps your Codex ChatGPT (OAuth) access token fresh
+and exposes it as an **OpenAI-compatible `/v1`** endpoint on localhost.
+
+- Reads tokens from `~/.codex/auth.json` (ChatGPT mode) and automatically
+  refreshes the access token in memory as it nears expiry (the file itself is
+  left untouched — Codex owns it).
+- `POST /v1/responses` is forwarded to the ChatGPT backend (`chatgpt.com/backend-api/wham`)
+  with the refreshed `Authorization` / `ChatGPT-Account-Id` headers, streaming
+  SSE responses through. `GET /v1/models` is exposed with the standard
+  `data[]/{id}` shape.
+- Any OpenAI-compatible client can point at `http://127.0.0.1:8080/v1` — e.g.
+  set `SUI_LLM_BASE_URL=http://127.0.0.1:8080/v1` for `sui`.
+- Every call must present a client API key as `Authorization: Bearer <key>`.
+  On startup `codex-proxy` generates one and prints it (or pin your own with
+  `--api-key`); requests without the matching key are rejected with 401.
+
+```console
+codex-proxy                    # prints a generated client API key, listens on 127.0.0.1:8080
+codex-proxy --port 9000 --backend https://chatgpt.com/backend-api/wham
+```
+
+Point an OpenAI-compatible client at the proxy, setting its API key to the one
+printed at startup — for `sui`, in `config.toml`:
+
+```toml
+[llm]
+base_url = "http://localhost:8080/v1"
+api_key = "<key printed by codex-proxy>"
+model = "gpt-5.6-luna"
+api_mode = "responses"
+```
+
+**Crate layout:** `codex-proxy` (bin) / `auth` (OAuth token management) / `proxy` (axum router) / `error`.
+
 ## Repository Layout
 
 | Path | Contents |
 | --- | --- |
+| `codex-proxy/` | Codex OAuth proxy — auto-refreshing OpenAI-compatible `/v1` daemon |
 | `koe/` | Koe (声) — offline recording & transcription for macOS |
 | `ren/` | Ren (蓮・連・錬) — workflow + memory foundation |
 | `sui/` | Sui (粋・推・遂) — coding-agent TUI |
@@ -100,7 +137,7 @@ The Rust toolchain (latest stable via `rust-overlay`) is provided by the flake.
 | Lint | `cargo clippy --workspace --all-targets -- -D warnings` |
 | Format | `cargo fmt --all` |
 | Full Nix check (same as CI) | `nix flake check` |
-| Build a package | `nix build .#koe` / `.#ren` / `.#sui` |
+| Build a package | `nix build .#codex-proxy` / `.#koe` / `.#ren` / `.#sui` |
 
 ## Design Principles
 

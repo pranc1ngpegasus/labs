@@ -22,6 +22,8 @@
         inputs.treefmt-nix.flakeModule
       ];
 
+      flake.homeManagerModules.codex-proxy = ./codex-proxy/home-manager.nix;
+
       perSystem =
         {
           config,
@@ -111,6 +113,15 @@
           };
 
           packages = {
+            codex-proxy = import ./codex-proxy/package.nix {
+              inherit (pkgs) stdenv;
+              inherit
+                craneLib
+                src
+                version
+                cargoArtifacts
+                ;
+            };
             sui = import ./sui/package.nix {
               inherit (pkgs) stdenv;
               inherit
@@ -141,6 +152,7 @@
             default = pkgs.symlinkJoin {
               name = "labs-all";
               paths = [
+                config.packages.codex-proxy
                 config.packages.sui
                 config.packages.koe
                 config.packages.ren
