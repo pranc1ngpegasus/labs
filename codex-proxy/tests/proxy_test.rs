@@ -1,0 +1,233 @@
+//! Hermetic end-to-end tests for the proxy router, using wiremock to stand in
+//! for both the `ChatGPT` backend and the OAuth token endpoint.
+#![allow(clippy::expect_used, clippy::unwrap_used)] // conventional in test crates
+
+use std::sync::Arc;
+
+use axum::body::Body;
+use axum::http::{Request, StatusCode};
+use codex_proxy::auth::Auth;
+use codex_proxy::proxy;
+use serde_json::{Value, json};
+use tower::ServiceExt;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+
+const EXPIRED_ACCESS: &str = "eyJhbGciOiJub25lIn0.eyJleHAiOjF9.sig";
+const FRESH_ACCESS: &str = "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTl9.sig";
+
+/// Writes an auth.json with an expired token into `dir` and returns its path.
+fn write_expired_auth(dir: &std::path::Path) -> std::path::PathBuf {
+    let json = format!(
+        r#"{{
+            "auth_mode": "chatgpt",
+            "last_refresh": "2025-01-01T00:00:00.000Z",
+            "tokens": {{
+                "access_token": "{EXPIRED_ACCESS}",
+                "refresh_token": "rt_test",
+                "account_id": "acct_1"
+            }}
+        }}"#
+    );
+    let path = dir.join("auth.json");
+    std::fs::write(&path, json).expect("write auth.json");
+    path
+}
+
+/// A ready-to-use proxy router pointing at `backend_server` and refreshing
+/// tokens via `token_server`.
+async fn build_router(
+    backend_server: &MockServer,
+    token_server: &MockServer,
+) -> Result<(axum::Router, tempfile::TempDir), String> {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let auth_file = write_expired_auth(dir.path());
+    let auth = Auth::load(&auth_file, &format!("{}/oauth/token", token_server.uri()))
+        .await
+        .map_err(|e| e.to_string())?;
+    let app = proxy::router(auth, &backend_server.uri());
+    Ok((app, dir))
+}
+
+/// Mocks the token endpoint to return a fresh access token on refresh.
+async fn mock_token_endpoint(server: &MockServer) {
+    Mock::given(method("POST"))
+        .and(path("/oauth/token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "access_token": FRESH_ACCESS,
+            "refresh_token": "rt_new",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        })))
+        .expect(1..)
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn forwards_responses_with_refreshed_token() {
+    let backend = MockServer::start().await;
+    let token = MockServer::start().await;
+    mock_token_endpoint(&token).await;
+
+    let seen_authorization = Arc::new(std::sync::Mutex::new(None::<String>));
+    let seen_seen = Arc::clone(&seen_authorization);
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(move |req: &wiremock::Request| {
+            let auth = req
+                .headers
+                .get("authorization")
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_owned);
+            *seen_seen.lock().expect("lock") = auth;
+            assert_eq!(
+                req.headers
+                    .get("chatgpt-account-id")
+                    .and_then(|v| v.to_str().ok()),
+                Some("acct_1")
+            );
+            ResponseTemplate::new(200).set_body_json(json!({
+                "id": "resp_1",
+                "object": "response",
+                "status": "completed",
+                "output": []
+            }))
+        })
+        .mount(&backend)
+        .await;
+
+    let (app, _dir) = build_router(&backend, &token).await.expect("router");
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/responses")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"model":"gpt-5.1","input":[]}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    // The token was refreshed from the (expired) initial one.
+    let expected = format!("Bearer {FRESH_ACCESS}");
+    let seen = seen_authorization.lock().expect("lock").clone();
+    assert_eq!(seen.as_deref(), Some(expected.as_str()));
+}
+
+#[tokio::test]
+async fn forwards_models_with_schema_rewrite() {
+    let backend = MockServer::start().await;
+    let token = MockServer::start().await;
+    mock_token_endpoint(&token).await;
+
+    Mock::given(method("GET"))
+        .and(path("/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "models": [{"slug": "gpt-5.1-codex-mini"}, {"slug": "gpt-5.1"}]
+        })))
+        .mount(&backend)
+        .await;
+
+    let (app, _dir) = build_router(&backend, &token).await.expect("router");
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/models")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("read body");
+    let v: Value = serde_json::from_slice(&body_bytes).expect("json");
+    assert_eq!(v["object"], "list");
+    let ids: Vec<&str> = v["data"]
+        .as_array()
+        .expect("array")
+        .iter()
+        .filter_map(|m| m["id"].as_str())
+        .collect();
+    assert_eq!(ids, ["gpt-5.1-codex-mini", "gpt-5.1"]);
+}
+
+#[tokio::test]
+async fn models_relays_upstream_error_body() {
+    let backend = MockServer::start().await;
+    let token = MockServer::start().await;
+    mock_token_endpoint(&token).await;
+
+    Mock::given(method("GET"))
+        .and(path("/models"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+            "error": { "message": "bad request", "type": "invalid_request_error" }
+        })))
+        .mount(&backend)
+        .await;
+
+    let (app, _dir) = build_router(&backend, &token).await.expect("router");
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/models")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body_bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("read body");
+    let v: Value = serde_json::from_slice(&body_bytes).expect("json");
+    assert_eq!(v["error"]["type"], "invalid_request_error");
+}
+
+#[tokio::test]
+async fn retries_once_after_401_and_force_refresh() {
+    let backend = MockServer::start().await;
+    let token = MockServer::start().await;
+    mock_token_endpoint(&token).await;
+
+    // First call: 401 (token rejected). Second call after refresh: 200.
+    let calls = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let front_responses_calls = Arc::clone(&calls);
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(move |_req: &wiremock::Request| {
+            let n = front_responses_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if n == 0 {
+                ResponseTemplate::new(401).set_body_json(json!({"error": {"message": "expired"}}))
+            } else {
+                ResponseTemplate::new(200).set_body_json(json!({"id": "resp_2", "object": "response", "status": "completed", "output": []}))
+            }
+        })
+        .expect(2)
+        .mount(&backend)
+        .await;
+
+    let (app, _dir) = build_router(&backend, &token).await.expect("router");
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/responses")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"model":"gpt-5.1","input":[]}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
