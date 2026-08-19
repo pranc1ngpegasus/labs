@@ -421,6 +421,74 @@ async fn spawn_raw_sse_backend(body: &'static str) -> String {
     format!("http://{addr}")
 }
 
+/// Like [`spawn_raw_sse_backend`] but sends `body` as a single HTTP chunk and
+/// then holds the keep-alive connection open without the terminating chunk —
+/// mimicking WHAM, which does not close after `response.completed`. The proxy
+/// must still end the client stream once it relays the terminal event.
+async fn spawn_raw_chunked_never_closing_backend(body: &'static str) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        if let Ok((mut socket, _)) = listener.accept().await {
+            let mut buf = [0u8; 8192];
+            let _ = socket.read(&mut buf).await;
+            let header =
+                "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\nconnection: keep-alive\r\n\r\n";
+            let _ = socket.write_all(header.as_bytes()).await;
+            let chunk = format!("{:x}\r\n{body}\r\n", body.len());
+            let _ = socket.write_all(chunk.as_bytes()).await;
+            // Deliberately never send the terminating "0\r\n\r\n" chunk, and
+            // keep the socket open so the client cannot rely on EOF.
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            drop(socket);
+        }
+    });
+    format!("http://{addr}")
+}
+
+#[tokio::test]
+async fn responses_closes_stream_after_terminal_event_despite_open_upstream() {
+    let token = MockServer::start().await;
+    mock_token_endpoint(&token).await;
+
+    let sse_body = "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n";
+    let backend_uri = spawn_raw_chunked_never_closing_backend(sse_body).await;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let auth_file = write_expired_auth(dir.path());
+    let auth = Auth::load(&auth_file, &format!("{}/oauth/token", token.uri()))
+        .await
+        .expect("auth");
+    let app = proxy::router(auth, &backend_uri, TEST_CLIENT_KEY);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/responses")
+                .header("authorization", format!("Bearer {TEST_CLIENT_KEY}"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"model":"gpt-5.1","input":"hi"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    // The body must complete promptly even though the upstream never closes.
+    let bytes = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        axum::body::to_bytes(response.into_body(), 1 << 20),
+    )
+    .await
+    .expect("body did not complete after terminal event")
+    .expect("read body");
+    assert_eq!(bytes.as_ref(), sse_body.as_bytes());
+}
+
 #[tokio::test]
 async fn missing_or_wrong_client_key_is_rejected() {
     let backend = MockServer::start().await;

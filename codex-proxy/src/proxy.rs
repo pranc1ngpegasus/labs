@@ -283,21 +283,94 @@ async fn forward(
                 }
             }
         }
-        // Stream the upstream body through so long-lived SSE conversations are
-        // relayed incrementally rather than buffered whole.
+        // Relay the upstream SSE, but end the downstream body as soon as the
+        // response is logically complete. The WHAM backend keeps the
+        // connection open (keep-alive) after `response.completed` instead of
+        // closing it, so clients that wait for body EOF (rather than stopping
+        // at the terminal event) would otherwise stall until a read timeout
+        // and retry. Closing here gives them EOF immediately.
         let debug = state.debug;
-        let stream = response.bytes_stream().inspect(move |item| {
-            if debug {
-                match item {
-                    Ok(chunk) => eprint!("{}", String::from_utf8_lossy(chunk)),
-                    Err(error) => eprintln!("\n[codex-proxy] < stream error: {error}"),
+        let body_stream = futures::stream::unfold(
+            (Box::pin(response.bytes_stream()), Vec::<u8>::new(), false),
+            move |(mut upstream, tail, finished)| async move {
+                if finished {
+                    return None;
                 }
-            }
-        });
+                match upstream.next().await {
+                    Some(Ok(chunk)) => {
+                        if debug {
+                            eprint!("{}", String::from_utf8_lossy(&chunk));
+                        }
+                        let terminal = sse_stream_terminates(&tail, &chunk);
+                        let next_tail = terminal_scan_tail(&chunk);
+                        Some((Ok(chunk), (upstream, next_tail, terminal)))
+                    },
+                    Some(Err(error)) => {
+                        if debug {
+                            eprintln!("\n[codex-proxy] < stream error: {error}");
+                        }
+                        Some((Err(error), (upstream, tail, true)))
+                    },
+                    None => None,
+                }
+            },
+        );
         return builder
-            .body(Body::from_stream(stream))
+            .body(Body::from_stream(body_stream))
             .map_err(|e| ProxyError::Body(std::io::Error::other(e)));
     }
+}
+
+/// SSE `data` payloads that mark the logical end of a Responses stream.
+const TERMINAL_MARKERS: [&[u8]; 3] = [
+    b"\"type\":\"response.completed\"",
+    b"\"type\":\"response.failed\"",
+    b"\"type\":\"response.incomplete\"",
+];
+
+/// How many trailing bytes of the previous chunk to keep so a terminal marker
+/// split across a chunk boundary is still detected. Must exceed the longest
+/// marker in [`TERMINAL_MARKERS`].
+const TERMINAL_SCAN_TAIL: usize = 32;
+
+/// Whether `chunk` (considered together with the previous chunk's `tail`)
+/// contains a terminal Responses event, signaling the stream can be closed.
+fn sse_stream_terminates(
+    tail: &[u8],
+    chunk: &[u8],
+) -> bool {
+    if TERMINAL_MARKERS
+        .iter()
+        .any(|marker| contains_subslice(chunk, marker))
+    {
+        return true;
+    }
+    // Only the boundary (previous tail + this chunk's head) can hide a marker
+    // the within-chunk scan missed, so check just that seam.
+    let mut boundary = tail.to_vec();
+    boundary.extend_from_slice(&chunk[..chunk.len().min(TERMINAL_SCAN_TAIL)]);
+    TERMINAL_MARKERS
+        .iter()
+        .any(|marker| contains_subslice(&boundary, marker))
+}
+
+/// The trailing bytes of `chunk` to carry into the next boundary check.
+fn terminal_scan_tail(chunk: &[u8]) -> Vec<u8> {
+    let start = chunk.len().saturating_sub(TERMINAL_SCAN_TAIL);
+    chunk[start..].to_vec()
+}
+
+/// Whether `haystack` contains `needle` as a contiguous subslice.
+fn contains_subslice(
+    haystack: &[u8],
+    needle: &[u8],
+) -> bool {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return false;
+    }
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
 }
 
 /// The `Content-Type` to inject into a forwarded upstream response, if any.
@@ -503,5 +576,33 @@ mod tests {
             injected_content_type(StatusCode::BAD_REQUEST, &headers),
             None
         );
+    }
+
+    #[test]
+    fn detects_terminal_event_within_a_chunk() {
+        let chunk = b"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{}}\n\n";
+        assert!(sse_stream_terminates(&[], chunk));
+    }
+
+    #[test]
+    fn detects_terminal_event_split_across_chunk_boundary() {
+        let full = b"data: {\"type\":\"response.completed\"}";
+        let split = 20;
+        let tail = terminal_scan_tail(&full[..split]);
+        assert!(!sse_stream_terminates(&[], &full[..split]));
+        assert!(sse_stream_terminates(&tail, &full[split..]));
+    }
+
+    #[test]
+    fn does_not_terminate_on_ordinary_delta_chunk() {
+        let chunk = b"event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"Hi\"}\n\n";
+        assert!(!sse_stream_terminates(&[], chunk));
+    }
+
+    #[test]
+    fn contains_subslice_matches_and_rejects() {
+        assert!(contains_subslice(b"abcdef", b"cde"));
+        assert!(!contains_subslice(b"abcdef", b"xyz"));
+        assert!(!contains_subslice(b"ab", b"abc"));
     }
 }
