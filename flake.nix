@@ -66,9 +66,16 @@
           # The whole workspace builds in a single derivation (see the
           # package.nix files), so dependency artifacts are built once here
           # and shared by packages and checks alike.
+          #
+          # Dependency artifacts only depend on Cargo.lock, not on the
+          # workspace version. Pin a stable version so the date/git-rev baked
+          # into `version` never invalidates this (expensive) deps build — it
+          # would otherwise rebuild on every commit and on every file save
+          # while the tree is dirty (`dirtyShortRev` changes each edit).
           commonArgs = {
-            inherit src version;
+            inherit src;
             pname = "labs-workspace";
+            version = "0.0.0";
             strictDeps = true;
           };
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
