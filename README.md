@@ -4,10 +4,6 @@ A collection of personal open-source projects and experiments. It is a
 Rust workspace + Nix flake monorepo that currently houses three projects:
 **`koe`**, **`ren`**, and **`sui`**.
 
-Each project is maintained as an independent git repository (with remotes
-`mokmok-dev/koe`, `mokmok-dev/ren`, and `mokmok-dev/sui` respectively); this
-repository builds, verifies, and ships them as a single workspace.
-
 ## Projects
 
 ### [koe](./koe) — 声 (voice)
