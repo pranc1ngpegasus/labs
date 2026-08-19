@@ -74,8 +74,69 @@ async fn responses(
     let body = axum::body::to_bytes(request.into_body(), MAX_BODY_BYTES)
         .await
         .map_err(|e| ProxyError::Body(std::io::Error::other(e)))?;
+    let body = normalize_responses_body(body);
     let upstream_url = format!("{}/responses", state.backend);
     forward(&state, &upstream_url, content_type, body).await
+}
+
+/// Moves `system` messages out of a Responses request's `input` array and into
+/// the top-level `instructions` field.
+///
+/// The `ChatGPT`/codex backend rejects `role: "system"` items inside `input`
+/// with `400 System messages are not allowed`, but standard `OpenAI` Responses
+/// clients routinely put the system prompt there. Rewriting the body keeps the
+/// proxy usable by unmodified clients without losing the prompt.
+///
+/// The original bytes are returned unchanged when the body is not JSON, has no
+/// array `input`, or carries no system messages, so non-Responses payloads and
+/// already-valid requests pass through untouched.
+fn normalize_responses_body(body: bytes::Bytes) -> bytes::Bytes {
+    let Ok(mut value) = serde_json::from_slice::<Value>(&body) else {
+        return body;
+    };
+    let Some(input) = value.get_mut("input").and_then(Value::as_array_mut) else {
+        return body;
+    };
+    let mut system_texts = Vec::new();
+    input.retain(|item| {
+        if item.get("role").and_then(Value::as_str) == Some("system") {
+            if let Some(text) = message_content_text(item.get("content")) {
+                system_texts.push(text);
+            }
+            false
+        } else {
+            true
+        }
+    });
+    if system_texts.is_empty() {
+        return body;
+    }
+    let mut parts = Vec::with_capacity(system_texts.len() + 1);
+    if let Some(existing) = value.get("instructions").and_then(Value::as_str)
+        && !existing.is_empty()
+    {
+        parts.push(existing.to_owned());
+    }
+    parts.extend(system_texts);
+    value["instructions"] = Value::String(parts.join("\n\n"));
+    serde_json::to_vec(&value).map_or(body, bytes::Bytes::from)
+}
+
+/// Extracts the text of a Responses message `content`, which may be a bare
+/// string or an array of typed parts (`{ "type": "input_text", "text": ... }`).
+fn message_content_text(content: Option<&Value>) -> Option<String> {
+    match content? {
+        Value::String(text) => Some(text.clone()),
+        Value::Array(parts) => {
+            let text = parts
+                .iter()
+                .filter_map(|part| part.get("text").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join("");
+            (!text.is_empty()).then_some(text)
+        },
+        _ => None,
+    }
 }
 
 /// Forwards `GET /v1/models`, rewriting the response to the standard shape.
@@ -300,5 +361,43 @@ mod tests {
     fn rejects_malformed_models_payload() {
         let err = rewrite_models(b"not json").expect_err("error");
         assert!(matches!(err, ProxyError::Upstream(_)));
+    }
+
+    #[test]
+    fn moves_system_message_into_instructions() {
+        let body = br#"{"model":"m","input":[{"role":"system","content":"rules"},{"role":"user","content":"hi"}]}"#;
+        let out = normalize_responses_body(bytes::Bytes::from_static(body));
+        let v: Value = serde_json::from_slice(&out).expect("json");
+        assert_eq!(v["instructions"], "rules");
+        let roles: Vec<&str> = v["input"]
+            .as_array()
+            .expect("array")
+            .iter()
+            .filter_map(|m| m["role"].as_str())
+            .collect();
+        assert_eq!(roles, ["user"]);
+    }
+
+    #[test]
+    fn joins_multiple_system_messages_and_existing_instructions() {
+        let body = br#"{"model":"m","instructions":"base","input":[{"role":"system","content":[{"type":"input_text","text":"a"}]},{"role":"user","content":"hi"},{"role":"system","content":"b"}]}"#;
+        let out = normalize_responses_body(bytes::Bytes::from_static(body));
+        let v: Value = serde_json::from_slice(&out).expect("json");
+        assert_eq!(v["instructions"], "base\n\na\n\nb");
+        assert_eq!(v["input"].as_array().expect("array").len(), 1);
+    }
+
+    #[test]
+    fn passes_through_when_no_system_message() {
+        let body = br#"{"model":"m","input":[{"role":"user","content":"hi"}]}"#;
+        let out = normalize_responses_body(bytes::Bytes::from_static(body));
+        assert_eq!(out.as_ref(), body);
+    }
+
+    #[test]
+    fn passes_through_non_json_body() {
+        let body = b"not json at all";
+        let out = normalize_responses_body(bytes::Bytes::from_static(body));
+        assert_eq!(out.as_ref(), body);
     }
 }

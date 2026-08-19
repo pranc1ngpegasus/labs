@@ -302,6 +302,56 @@ async fn concurrent_expiry_misses_refresh_only_once() {
 }
 
 #[tokio::test]
+async fn responses_moves_system_message_into_instructions_upstream() {
+    let backend = MockServer::start().await;
+    let token = MockServer::start().await;
+    mock_token_endpoint(&token).await;
+
+    let seen_body = Arc::new(std::sync::Mutex::new(None::<Value>));
+    let capture = Arc::clone(&seen_body);
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(move |req: &wiremock::Request| {
+            *capture.lock().expect("lock") = serde_json::from_slice(&req.body).ok();
+            ResponseTemplate::new(200).set_body_json(json!({
+                "id": "resp_1",
+                "object": "response",
+                "status": "completed",
+                "output": []
+            }))
+        })
+        .mount(&backend)
+        .await;
+
+    let (app, _dir) = build_router(&backend, &token).await.expect("router");
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/responses")
+                .header("authorization", format!("Bearer {TEST_CLIENT_KEY}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"model":"gpt-5.1","input":[{"role":"system","content":"rules"},{"role":"user","content":"hi"}]}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = seen_body.lock().expect("lock").clone().expect("captured body");
+    assert_eq!(body["instructions"], "rules");
+    let roles: Vec<&str> = body["input"]
+        .as_array()
+        .expect("array")
+        .iter()
+        .filter_map(|m| m["role"].as_str())
+        .collect();
+    assert_eq!(roles, ["user"]);
+}
+
+#[tokio::test]
 async fn missing_or_wrong_client_key_is_rejected() {
     let backend = MockServer::start().await;
     let token = MockServer::start().await;
