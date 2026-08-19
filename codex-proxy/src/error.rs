@@ -74,6 +74,9 @@ pub enum ProxyError {
     /// The backend returned a body we could not parse/translate.
     #[error("backend returned an unparseable response")]
     Upstream(StatusCode),
+    /// The client request body exceeded the configured limit.
+    #[error("request body exceeds the maximum size")]
+    PayloadTooLarge,
     /// The request body could not be read.
     #[error("failed to read request body: {0}")]
     Body(std::io::Error),
@@ -82,6 +85,12 @@ pub enum ProxyError {
 impl IntoResponse for ProxyError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
+            Self::PayloadTooLarge => (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Json(
+                    serde_json::json!({ "error": { "message": self.to_string(), "type": "invalid_request_error" } }),
+                ),
+            ),
             Self::Auth(auth) => {
                 let (status, body) = auth.http_response();
                 (status, body)

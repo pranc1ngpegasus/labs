@@ -194,17 +194,22 @@ impl Auth {
         Ok(())
     }
 
-    /// Refreshes unconditionally. Used when the backend rejects the current
-    /// token (401); this also flows through the single-flight lock so a burst
-    /// of 401s cannot stampede the token endpoint.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AuthError::Refresh`] on transport or non-2xx from the endpoint,
-    /// or [`AuthError::MissingRefresh`] when there is no refresh token.
-    pub(crate) async fn force_refresh(&self) -> Result<(), AuthError> {
+    /// Refreshes the token after a backend 401 only when `rejected_token` is
+    /// still the current token. If another request already refreshed it, the
+    /// caller can retry with the newer token without refreshing twice.
+    pub(crate) async fn force_refresh_if(
+        &self,
+        rejected_token: &str,
+    ) -> Result<(), AuthError> {
         let _guard = self.refresh_lock.lock().await;
-        self.do_refresh().await
+        let still_current = {
+            let state = self.state.read().await;
+            state.access_token == rejected_token
+        };
+        if still_current {
+            self.do_refresh().await?;
+        }
+        Ok(())
     }
 
     /// Returns true when the current token is absent or within the safety

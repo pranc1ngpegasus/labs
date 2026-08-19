@@ -94,7 +94,7 @@ async fn responses(
         .map(str::to_owned);
     let body = axum::body::to_bytes(request.into_body(), MAX_BODY_BYTES)
         .await
-        .map_err(|e| ProxyError::Body(std::io::Error::other(e)))?;
+        .map_err(|_| ProxyError::PayloadTooLarge)?;
     let body = normalize_responses_body(body);
     let upstream_url = format!("{}/responses", state.backend);
     forward(&state, &upstream_url, content_type, body).await
@@ -120,14 +120,14 @@ fn normalize_responses_body(body: bytes::Bytes) -> bytes::Bytes {
     };
     let mut system_texts = Vec::new();
     input.retain(|item| {
-        if item.get("role").and_then(Value::as_str) == Some("system") {
-            if let Some(text) = message_content_text(item.get("content")) {
-                system_texts.push(text);
-            }
-            false
-        } else {
-            true
+        if item.get("role").and_then(Value::as_str) == Some("system")
+            && let Some(text) = message_content_text(item.get("content"))
+            && !text.is_empty()
+        {
+            system_texts.push(text);
+            return false;
         }
+        true
     });
     if system_texts.is_empty() {
         return body;
@@ -169,46 +169,55 @@ async fn models(
         return Ok(unauthorized());
     }
     let upstream_url = format!("{}/models", state.backend);
-    let access = state.auth.access_token().await?;
-    let account_header = account_header_value(&state).await;
-    let mut builder = state
-        .http
-        .get(&upstream_url)
-        .header(reqwest::header::AUTHORIZATION, bearer(&access));
-    if let Some(value) = account_header {
-        builder = builder.header(ACCOUNT_HEADER, value);
-    }
-    // WHAM's /models requires the client_version query param; pass through any
-    // that the caller sent on the incoming request.
-    if let Some(query) = request.uri().query() {
-        builder = builder.query(&query);
-    }
-
-    let response = builder.send().await?;
-    let status = response.status();
-
-    // Relay upstream failures (status + body) so OpenAI clients receive the
-    // backend's structured error rather than a generic placeholder.
-    if !status.is_success() {
-        let mut builder = Response::builder().status(status);
-        for (name, value) in response.headers() {
-            if is_forwardable_header(name) {
-                builder = builder.header(name, value);
-            }
+    let query = request.uri().query().map(str::to_owned);
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        let access = state.auth.access_token().await?;
+        let account_header = account_header_value(&state).await;
+        let mut builder = state
+            .http
+            .get(&upstream_url)
+            .header(reqwest::header::AUTHORIZATION, bearer(&access));
+        if let Some(value) = account_header {
+            builder = builder.header(ACCOUNT_HEADER, value);
         }
-        let stream = response.bytes_stream();
-        return builder
-            .body(Body::from_stream(stream))
+        // WHAM's /models requires the client_version query param; pass through
+        // any that the caller sent on the incoming request.
+        if let Some(query) = &query {
+            builder = builder.query(query);
+        }
+
+        let response = builder.send().await?;
+        let status = response.status();
+        if status == StatusCode::UNAUTHORIZED && attempt < MAX_ATTEMPTS {
+            state.auth.force_refresh_if(&access).await?;
+            continue;
+        }
+
+        // Relay upstream failures (status + body) so OpenAI clients receive the
+        // backend's structured error rather than a generic placeholder.
+        if !status.is_success() {
+            let mut builder = Response::builder().status(status);
+            for (name, value) in response.headers() {
+                if is_forwardable_header(name) {
+                    builder = builder.header(name, value);
+                }
+            }
+            let stream = response.bytes_stream();
+            return builder
+                .body(Body::from_stream(stream))
+                .map_err(|e| ProxyError::Body(std::io::Error::other(e)));
+        }
+
+        let body_bytes = response.bytes().await?;
+        let rewritten = rewrite_models(&body_bytes)?;
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(axum::http::header::CONTENT_TYPE, "application/json")
+            .body(Body::from(rewritten))
             .map_err(|e| ProxyError::Body(std::io::Error::other(e)));
     }
-
-    let body_bytes = response.bytes().await?;
-    let rewritten = rewrite_models(&body_bytes)?;
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(axum::http::header::CONTENT_TYPE, "application/json")
-        .body(Body::from(rewritten))
-        .map_err(|e| ProxyError::Body(std::io::Error::other(e)))
 }
 
 /// Forwards a request/body to `upstream_url`, streaming the backend response
@@ -245,7 +254,7 @@ async fn forward(
 
         if status == StatusCode::UNAUTHORIZED && attempt < MAX_ATTEMPTS {
             // The token may have been revoked; force a refresh and retry once.
-            state.auth.force_refresh().await?;
+            state.auth.force_refresh_if(&access).await?;
             continue;
         }
 
@@ -384,9 +393,9 @@ impl ResponsesStreamRewriter {
     ) -> Vec<u8> {
         self.buffer.extend_from_slice(chunk);
         let mut out = Vec::new();
-        while let Some(pos) = find_subslice(&self.buffer, b"\n\n") {
+        while let Some((pos, delimiter_len)) = find_event_boundary(&self.buffer) {
             let block: Vec<u8> = self.buffer.drain(..pos).collect();
-            self.buffer.drain(..2);
+            self.buffer.drain(..delimiter_len);
             out.extend_from_slice(&self.process_block(&block));
             if self.completed {
                 break;
@@ -466,6 +475,7 @@ impl ResponsesStreamRewriter {
 fn extract_sse_data(block: &str) -> Option<String> {
     let mut data: Option<String> = None;
     for line in block.lines() {
+        let line = line.strip_suffix('\r').unwrap_or(line);
         if let Some(rest) = line.strip_prefix("data:") {
             let rest = rest.strip_prefix(' ').unwrap_or(rest);
             match &mut data {
@@ -495,6 +505,17 @@ fn reframe_event(
     value: &Value,
 ) -> Vec<u8> {
     format!("event: {event}\ndata: {value}\n\n").into_bytes()
+}
+
+/// Returns the first SSE event delimiter and its byte length.
+fn find_event_boundary(haystack: &[u8]) -> Option<(usize, usize)> {
+    let lf = find_subslice(haystack, b"\n\n").map(|pos| (pos, 2));
+    let crlf = find_subslice(haystack, b"\r\n\r\n").map(|pos| (pos, 4));
+    match (lf, crlf) {
+        (Some(left), Some(right)) => Some(if left.0 <= right.0 { left } else { right }),
+        (Some(found), None) | (None, Some(found)) => Some(found),
+        (None, None) => None,
+    }
 }
 
 /// Returns the index of the first occurrence of `needle` in `haystack`.
@@ -769,6 +790,17 @@ mod tests {
         let out = rewriter.push(&bytes[split..]);
         assert!(rewriter.is_complete());
         assert!(!out.is_empty());
+    }
+
+    #[test]
+    fn rewriter_accepts_crlf_event_boundaries() {
+        let mut rewriter = ResponsesStreamRewriter::new();
+        let completed = "event: response.completed\r\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[]}}\r\n\r\n";
+        let out = rewriter.push(completed.as_bytes());
+        assert!(rewriter.is_complete());
+        let data = extract_sse_data(&String::from_utf8(out).expect("utf8")).expect("data");
+        let value: Value = serde_json::from_str(&data).expect("json");
+        assert_eq!(value["type"], "response.completed");
     }
 
     #[test]
