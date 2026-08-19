@@ -450,11 +450,20 @@ async fn spawn_raw_chunked_never_closing_backend(body: &'static str) -> String {
 }
 
 #[tokio::test]
-async fn responses_closes_stream_after_terminal_event_despite_open_upstream() {
+async fn responses_fills_empty_completed_output_and_closes_despite_open_upstream() {
     let token = MockServer::start().await;
     mock_token_endpoint(&token).await;
 
-    let sse_body = "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n";
+    // WHAM streams the output only as incremental items, returns
+    // response.completed with an empty output array, and then keeps the
+    // keep-alive connection open. The proxy must rebuild output and end the
+    // client body promptly.
+    let sse_body = concat!(
+        "event: response.output_item.done\n",
+        "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Hello!\"}]}}\n\n",
+        "event: response.completed\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[]}}\n\n",
+    );
     let backend_uri = spawn_raw_chunked_never_closing_backend(sse_body).await;
 
     let dir = tempfile::tempdir().expect("tempdir");
@@ -486,7 +495,23 @@ async fn responses_closes_stream_after_terminal_event_despite_open_upstream() {
     .await
     .expect("body did not complete after terminal event")
     .expect("read body");
-    assert_eq!(bytes.as_ref(), sse_body.as_bytes());
+
+    // The relayed completed event must carry the reconstructed output.
+    let text = String::from_utf8(bytes.to_vec()).expect("utf8");
+    let completed = text
+        .split("\n\n")
+        .find(|block| block.contains("response.completed"))
+        .expect("completed event");
+    let data = completed
+        .lines()
+        .find_map(|line| line.strip_prefix("data: "))
+        .expect("data line");
+    let value: Value = serde_json::from_str(data).expect("json");
+    let output = value["response"]["output"]
+        .as_array()
+        .expect("output array");
+    assert_eq!(output.len(), 1);
+    assert_eq!(output[0]["content"][0]["text"], "Hello!");
 }
 
 #[tokio::test]

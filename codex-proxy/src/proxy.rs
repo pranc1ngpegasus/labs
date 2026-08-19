@@ -283,94 +283,231 @@ async fn forward(
                 }
             }
         }
-        // Relay the upstream SSE, but end the downstream body as soon as the
-        // response is logically complete. The WHAM backend keeps the
-        // connection open (keep-alive) after `response.completed` instead of
-        // closing it, so clients that wait for body EOF (rather than stopping
-        // at the terminal event) would otherwise stall until a read timeout
-        // and retry. Closing here gives them EOF immediately.
-        let debug = state.debug;
-        let body_stream = futures::stream::unfold(
-            (Box::pin(response.bytes_stream()), Vec::<u8>::new(), false),
-            move |(mut upstream, tail, finished)| async move {
-                if finished {
-                    return None;
-                }
+        // Parse and repair the upstream SSE. The WHAM backend streams the
+        // assistant output only as incremental events and leaves the terminal
+        // `response.completed` event's `response.output` empty, so clients that
+        // read the final result from `response.output` see nothing and retry.
+        // Rebuild `output` from the streamed items, then end the body once the
+        // (full) terminal event is relayed — the backend keeps the keep-alive
+        // connection open otherwise.
+        return builder
+            .body(Body::from_stream(sse_repair_stream(response, state.debug)))
+            .map_err(|e| ProxyError::Body(std::io::Error::other(e)));
+    }
+}
+
+/// Streams the upstream response body, repairing the terminal Responses event
+/// (see [`ResponsesStreamRewriter`]) and ending once it is relayed.
+fn sse_repair_stream(
+    response: reqwest::Response,
+    debug: bool,
+) -> impl futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> {
+    futures::stream::unfold(
+        (
+            Box::pin(response.bytes_stream()),
+            ResponsesStreamRewriter::new(),
+            false,
+        ),
+        move |(mut upstream, mut rewriter, finished)| async move {
+            if finished {
+                return None;
+            }
+            loop {
                 match upstream.next().await {
                     Some(Ok(chunk)) => {
                         if debug {
                             eprint!("{}", String::from_utf8_lossy(&chunk));
                         }
-                        let terminal = sse_stream_terminates(&tail, &chunk);
-                        let next_tail = terminal_scan_tail(&chunk);
-                        Some((Ok(chunk), (upstream, next_tail, terminal)))
+                        let out = rewriter.push(&chunk);
+                        let complete = rewriter.is_complete();
+                        if out.is_empty() && !complete {
+                            continue;
+                        }
+                        return Some((Ok(bytes::Bytes::from(out)), (upstream, rewriter, complete)));
                     },
                     Some(Err(error)) => {
                         if debug {
                             eprintln!("\n[codex-proxy] < stream error: {error}");
                         }
-                        Some((Err(error), (upstream, tail, true)))
+                        return Some((Err(error), (upstream, rewriter, true)));
                     },
-                    None => None,
+                    None => {
+                        let out = rewriter.flush();
+                        if out.is_empty() {
+                            return None;
+                        }
+                        return Some((Ok(bytes::Bytes::from(out)), (upstream, rewriter, true)));
+                    },
                 }
+            }
+        },
+    )
+}
+
+/// Repairs a Responses SSE stream so its terminal event carries the model
+/// output.
+///
+/// The `ChatGPT`/WHAM backend emits each output item incrementally
+/// (`response.output_item.done`) but returns `response.completed` with an empty
+/// `response.output`. Clients that read the final result from `response.output`
+/// therefore treat the turn as empty and retry. This reassembles the streamed
+/// events, collects the completed output items, and injects them into
+/// `response.output` of the terminal event before it is forwarded. All other
+/// events are relayed byte-for-byte.
+struct ResponsesStreamRewriter {
+    /// Bytes not yet split into a complete `event`/`data` block.
+    buffer: Vec<u8>,
+    /// Completed output items, keyed by `output_index` to preserve order.
+    items: std::collections::BTreeMap<u64, Value>,
+    /// Whether a terminal event has been relayed.
+    completed: bool,
+}
+
+impl ResponsesStreamRewriter {
+    const fn new() -> Self {
+        Self {
+            buffer: Vec::new(),
+            items: std::collections::BTreeMap::new(),
+            completed: false,
+        }
+    }
+    /// Whether a terminal event has been relayed and the stream can end.
+    const fn is_complete(&self) -> bool {
+        self.completed
+    }
+
+    /// Feeds one upstream chunk and returns reframed SSE bytes for any events
+    /// that are now complete.
+    fn push(
+        &mut self,
+        chunk: &[u8],
+    ) -> Vec<u8> {
+        self.buffer.extend_from_slice(chunk);
+        let mut out = Vec::new();
+        while let Some(pos) = find_subslice(&self.buffer, b"\n\n") {
+            let block: Vec<u8> = self.buffer.drain(..pos).collect();
+            self.buffer.drain(..2);
+            out.extend_from_slice(&self.process_block(&block));
+            if self.completed {
+                break;
+            }
+        }
+        out
+    }
+
+    /// Emits any trailing buffered event when the upstream ends without a final
+    /// blank line.
+    fn flush(&mut self) -> Vec<u8> {
+        if self.buffer.is_empty() {
+            return Vec::new();
+        }
+        let block = std::mem::take(&mut self.buffer);
+        self.process_block(&block)
+    }
+
+    fn process_block(
+        &mut self,
+        block: &[u8],
+    ) -> Vec<u8> {
+        let Ok(text) = std::str::from_utf8(block) else {
+            return reframe_raw(block);
+        };
+        let Some(data) = extract_sse_data(text) else {
+            return reframe_raw(block);
+        };
+        let Ok(value) = serde_json::from_str::<Value>(&data) else {
+            return reframe_raw(block);
+        };
+        match value.get("type").and_then(Value::as_str) {
+            Some("response.output_item.done") => {
+                if let (Some(item), Some(index)) = (
+                    value.get("item"),
+                    value.get("output_index").and_then(Value::as_u64),
+                ) {
+                    self.items.insert(index, item.clone());
+                }
+                reframe_raw(block)
             },
-        );
-        return builder
-            .body(Body::from_stream(body_stream))
-            .map_err(|e| ProxyError::Body(std::io::Error::other(e)));
+            Some("response.completed" | "response.incomplete") => {
+                self.completed = true;
+                let event = value
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .unwrap_or("response.completed")
+                    .to_owned();
+                reframe_event(&event, &self.patch_output(value))
+            },
+            _ => reframe_raw(block),
+        }
+    }
+
+    /// Fills an empty `response.output` with the collected output items.
+    fn patch_output(
+        &self,
+        mut value: Value,
+    ) -> Value {
+        let output_empty = value
+            .get("response")
+            .and_then(|response| response.get("output"))
+            .and_then(Value::as_array)
+            .is_none_or(Vec::is_empty);
+        if output_empty
+            && !self.items.is_empty()
+            && let Some(response) = value.get_mut("response").and_then(Value::as_object_mut)
+        {
+            let items = self.items.values().cloned().collect();
+            response.insert("output".to_owned(), Value::Array(items));
+        }
+        value
     }
 }
 
-/// SSE `data` payloads that mark the logical end of a Responses stream.
-const TERMINAL_MARKERS: [&[u8]; 3] = [
-    b"\"type\":\"response.completed\"",
-    b"\"type\":\"response.failed\"",
-    b"\"type\":\"response.incomplete\"",
-];
-
-/// How many trailing bytes of the previous chunk to keep so a terminal marker
-/// split across a chunk boundary is still detected. Must exceed the longest
-/// marker in [`TERMINAL_MARKERS`].
-const TERMINAL_SCAN_TAIL: usize = 32;
-
-/// Whether `chunk` (considered together with the previous chunk's `tail`)
-/// contains a terminal Responses event, signaling the stream can be closed.
-fn sse_stream_terminates(
-    tail: &[u8],
-    chunk: &[u8],
-) -> bool {
-    if TERMINAL_MARKERS
-        .iter()
-        .any(|marker| contains_subslice(chunk, marker))
-    {
-        return true;
+/// Extracts and joins the `data:` field(s) of an SSE event block.
+fn extract_sse_data(block: &str) -> Option<String> {
+    let mut data: Option<String> = None;
+    for line in block.lines() {
+        if let Some(rest) = line.strip_prefix("data:") {
+            let rest = rest.strip_prefix(' ').unwrap_or(rest);
+            match &mut data {
+                Some(existing) => {
+                    existing.push('\n');
+                    existing.push_str(rest);
+                },
+                None => data = Some(rest.to_owned()),
+            }
+        }
     }
-    // Only the boundary (previous tail + this chunk's head) can hide a marker
-    // the within-chunk scan missed, so check just that seam.
-    let mut boundary = tail.to_vec();
-    boundary.extend_from_slice(&chunk[..chunk.len().min(TERMINAL_SCAN_TAIL)]);
-    TERMINAL_MARKERS
-        .iter()
-        .any(|marker| contains_subslice(&boundary, marker))
+    data
 }
 
-/// The trailing bytes of `chunk` to carry into the next boundary check.
-fn terminal_scan_tail(chunk: &[u8]) -> Vec<u8> {
-    let start = chunk.len().saturating_sub(TERMINAL_SCAN_TAIL);
-    chunk[start..].to_vec()
+/// Re-emits an event block unchanged, restoring the `\n\n` terminator that was
+/// stripped while splitting.
+fn reframe_raw(block: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(block.len() + 2);
+    out.extend_from_slice(block);
+    out.extend_from_slice(b"\n\n");
+    out
 }
 
-/// Whether `haystack` contains `needle` as a contiguous subslice.
-fn contains_subslice(
+/// Frames a typed event with the given JSON payload as an SSE block.
+fn reframe_event(
+    event: &str,
+    value: &Value,
+) -> Vec<u8> {
+    format!("event: {event}\ndata: {value}\n\n").into_bytes()
+}
+
+/// Returns the index of the first occurrence of `needle` in `haystack`.
+fn find_subslice(
     haystack: &[u8],
     needle: &[u8],
-) -> bool {
+) -> Option<usize> {
     if needle.is_empty() || haystack.len() < needle.len() {
-        return false;
+        return None;
     }
     haystack
         .windows(needle.len())
-        .any(|window| window == needle)
+        .position(|window| window == needle)
 }
 
 /// The `Content-Type` to inject into a forwarded upstream response, if any.
@@ -579,30 +716,64 @@ mod tests {
     }
 
     #[test]
-    fn detects_terminal_event_within_a_chunk() {
-        let chunk = b"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{}}\n\n";
-        assert!(sse_stream_terminates(&[], chunk));
+    fn rewriter_fills_empty_completed_output_from_streamed_items() {
+        let mut rewriter = ResponsesStreamRewriter::new();
+        let item_done = "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Hi\"}]}}\n\n";
+        let completed = "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[]}}\n\n";
+
+        let relayed = rewriter.push(item_done.as_bytes());
+        assert_eq!(relayed, item_done.as_bytes());
+        assert!(!rewriter.is_complete());
+
+        let out = rewriter.push(completed.as_bytes());
+        assert!(rewriter.is_complete());
+        let text = String::from_utf8(out).expect("utf8");
+        let data = extract_sse_data(&text).expect("data");
+        let value: Value = serde_json::from_str(&data).expect("json");
+        let output = value["response"]["output"].as_array().expect("array");
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0]["content"][0]["text"], "Hi");
     }
 
     #[test]
-    fn detects_terminal_event_split_across_chunk_boundary() {
-        let full = b"data: {\"type\":\"response.completed\"}";
-        let split = 20;
-        let tail = terminal_scan_tail(&full[..split]);
-        assert!(!sse_stream_terminates(&[], &full[..split]));
-        assert!(sse_stream_terminates(&tail, &full[split..]));
+    fn rewriter_relays_delta_events_unchanged() {
+        let mut rewriter = ResponsesStreamRewriter::new();
+        let delta = "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"Hi\"}\n\n";
+        assert_eq!(rewriter.push(delta.as_bytes()), delta.as_bytes());
+        assert!(!rewriter.is_complete());
     }
 
     #[test]
-    fn does_not_terminate_on_ordinary_delta_chunk() {
-        let chunk = b"event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"Hi\"}\n\n";
-        assert!(!sse_stream_terminates(&[], chunk));
+    fn rewriter_keeps_populated_completed_output() {
+        let mut rewriter = ResponsesStreamRewriter::new();
+        // No items collected; an already-populated output must be preserved.
+        let completed = "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[{\"type\":\"message\"}]}}\n\n";
+        let out = rewriter.push(completed.as_bytes());
+        let text = String::from_utf8(out).expect("utf8");
+        let value: Value =
+            serde_json::from_str(&extract_sse_data(&text).expect("data")).expect("json");
+        assert_eq!(
+            value["response"]["output"].as_array().expect("array").len(),
+            1
+        );
     }
 
     #[test]
-    fn contains_subslice_matches_and_rejects() {
-        assert!(contains_subslice(b"abcdef", b"cde"));
-        assert!(!contains_subslice(b"abcdef", b"xyz"));
-        assert!(!contains_subslice(b"ab", b"abc"));
+    fn rewriter_handles_event_split_across_chunks() {
+        let mut rewriter = ResponsesStreamRewriter::new();
+        let completed = "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[]}}\n\n";
+        let bytes = completed.as_bytes();
+        let split = 30;
+        assert!(rewriter.push(&bytes[..split]).is_empty());
+        assert!(!rewriter.is_complete());
+        let out = rewriter.push(&bytes[split..]);
+        assert!(rewriter.is_complete());
+        assert!(!out.is_empty());
+    }
+
+    #[test]
+    fn find_subslice_locates_and_rejects() {
+        assert_eq!(find_subslice(b"abc\n\ndef", b"\n\n"), Some(3));
+        assert_eq!(find_subslice(b"abcdef", b"\n\n"), None);
     }
 }
