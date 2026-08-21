@@ -98,6 +98,20 @@
               pname = "labs-workspace";
               cargoClippyExtraArgs = "--all-targets --all-features -- --deny warnings";
             };
+            hakari = craneLib.mkCargoDerivation {
+              inherit src;
+              pname = "labs-hakari";
+              cargoArtifacts = null;
+              doInstallCargoArtifacts = false;
+              buildPhaseCargoCommand = ''
+                cargo hakari generate --diff
+                cargo hakari manage-deps --dry-run
+                cargo hakari verify
+              '';
+              nativeBuildInputs = [
+                pkgs.cargo-hakari
+              ];
+            };
             test = craneLib.cargoTest {
               inherit src cargoArtifacts;
               pname = "labs-workspace";

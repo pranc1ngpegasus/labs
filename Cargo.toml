@@ -15,6 +15,7 @@ members = [
   "sui/sui-tools",
   "sui/sui-widget",
   "sui/sui-workflow",
+  "workspace-hack",
 ]
 resolver = "3"
 
@@ -78,6 +79,7 @@ uniffi = "0.28.3"
 usage = { package = "usage-rs", version = "6", features = ["validation"] }
 vorbis_rs = "0.5.6"
 wiremock = "0.6.5"
+workspace-hack = { path = "./workspace-hack" }
 yaml_serde = "0.10.4"
 
 [workspace.lints.clippy]
