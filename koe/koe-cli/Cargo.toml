@@ -32,6 +32,7 @@ tokio = { workspace = true, features = [
 ] }
 toml = { workspace = true }
 usage.workspace = true
+workspace-hack.workspace = true
 
 [lints]
 workspace = true

@@ -13,6 +13,7 @@ sui-theme = { workspace = true }
 sui-tools = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+workspace-hack.workspace = true
 
 [lints]
 workspace = true

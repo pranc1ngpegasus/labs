@@ -8,6 +8,7 @@ version.workspace = true
 ratatui = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 toml = { workspace = true }
+workspace-hack.workspace = true
 
 [lints]
 workspace = true
