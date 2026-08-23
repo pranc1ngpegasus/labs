@@ -4,7 +4,6 @@ name = "ren-memory"
 version.workspace = true
 
 [dependencies]
-usage.workspace = true
 fs2.workspace = true
 ignore.workspace = true
 jiff.workspace = true
@@ -16,6 +15,7 @@ sha2.workspace = true
 thiserror.workspace = true
 toml_edit = { workspace = true, features = ["serde"] }
 ulid.workspace = true
+usage.workspace = true
 yaml_serde.workspace = true
 
 [dev-dependencies]

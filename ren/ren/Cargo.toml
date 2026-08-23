@@ -5,11 +5,11 @@ name = "ren"
 version.workspace = true
 
 [dependencies]
-usage.workspace = true
 ren-memory.workspace = true
 ren-workflow.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+usage.workspace = true
 
 [dev-dependencies]
 tempfile = "3.23.0"
