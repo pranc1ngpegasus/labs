@@ -748,12 +748,12 @@ mod tests {
     }
 
     fn parse_record(args: &[&str]) -> RecordArgs {
-        let argv: Vec<&OsStr> = ["koe", "record"]
+        let cli_argv: Vec<&OsStr> = ["koe", "record"]
             .into_iter()
             .chain(args.iter().copied())
             .map(OsStr::new)
             .collect();
-        match TestCli::try_parse_from(&argv).expect("parse").command {
+        match TestCli::try_parse_from(&cli_argv).expect("parse").command {
             TestCommand::Record(record) => record,
         }
     }

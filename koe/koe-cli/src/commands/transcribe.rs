@@ -390,12 +390,12 @@ mod tests {
     }
 
     fn parse_transcribe(args: &[&str]) -> TranscribeArgs {
-        let argv: Vec<&OsStr> = ["koe", "transcribe"]
+        let cli_argv: Vec<&OsStr> = ["koe", "transcribe"]
             .into_iter()
             .chain(args.iter().copied())
             .map(OsStr::new)
             .collect();
-        match TestCli::try_parse_from(&argv).expect("parse").command {
+        match TestCli::try_parse_from(&cli_argv).expect("parse").command {
             TestCommand::Transcribe(transcribe) => transcribe,
         }
     }
