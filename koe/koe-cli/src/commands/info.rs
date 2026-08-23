@@ -5,12 +5,12 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::process::Command;
 
-use usage::Args;
 use koe_core::{
     AudioDeviceInfo, available_disk_space, default_input_device, default_output_device,
     enabled_features, supported_speech_locales,
 };
 use serde_json::json;
+use usage::Args;
 
 use super::Run;
 use crate::MainError;

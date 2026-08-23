@@ -3,12 +3,12 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use usage::Args;
 use koe_core::{
     AudioSourceConfig, OutputFormat, PipelineConfig, PipelineError, RecordingError,
     RecordingPipeline, StopResult, default_transcript_path, enumerate_apps,
     native_provider_registered,
 };
+use usage::Args;
 
 use super::Run;
 use super::apps_table::{format_apps_table, prepare_apps};
@@ -92,11 +92,7 @@ pub struct RecordArgs {
     pub list_locales: bool,
 
     /// Encoded audio output path.
-    #[usage(
-        short = 'o',
-        long,
-        required_unless("--list-sources", "--list-locales")
-    )]
+    #[usage(short = 'o', long, required_unless("--list-sources", "--list-locales"))]
     pub output: Option<PathBuf>,
 
     /// Audio container: `ogg`, `wav`, or `flac`.
@@ -771,27 +767,14 @@ mod tests {
 
     #[test]
     fn parses_mic_no_transcribe() {
-        let args = parse_record(&[
-            "--source",
-            "mic",
-            "--no-transcribe",
-            "-o",
-            "test.ogg",
-        ]);
+        let args = parse_record(&["--source", "mic", "--no-transcribe", "-o", "test.ogg"]);
         assert!(args.no_transcribe);
         assert_eq!(args.source.as_deref(), Some("mic"));
     }
 
     #[test]
     fn prepare_rejects_noncanonical_rate() {
-        let args = parse_record(&[
-            "--source",
-            "mic",
-            "--sample-rate",
-            "44100",
-            "-o",
-            "out.wav",
-        ]);
+        let args = parse_record(&["--source", "mic", "--sample-rate", "44100", "-o", "out.wav"]);
         let err = prepare_session(&args, &KoeConfig::default()).expect_err("rate");
         assert!(matches!(err, MainError::InvalidArgs(_)));
     }
@@ -886,17 +869,8 @@ comfort-noise = false
     #[test]
     fn prepare_cli_overrides_config() {
         let args = parse_record(&[
-            "--source",
-            "mic",
-            "--format",
-            "wav",
-            "--locale",
-            "en-US",
-            "--engine",
-            "network",
-            "--no-aec",
-            "-o",
-            "out.wav",
+            "--source", "mic", "--format", "wav", "--locale", "en-US", "--engine", "network",
+            "--no-aec", "-o", "out.wav",
         ]);
         let file = config::parse_toml(
             r#"

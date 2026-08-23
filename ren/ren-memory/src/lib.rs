@@ -16,8 +16,8 @@ use std::{
     path::PathBuf,
 };
 
-use usage::{Args, Subcommands, ValueEnum};
 use serde::Serialize;
+use usage::{Args, Subcommands, ValueEnum};
 
 pub use capture::{CaptureEvent, CaptureResult, EVENT_SCHEMA};
 pub use error::MemoryError;

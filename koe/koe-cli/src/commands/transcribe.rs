@@ -4,12 +4,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use usage::Args;
 use koe_core::{
     AudioSourceConfig, TranscriptFormat, TranscriptMeta, TranscriptionCallback,
     TranscriptionSegment, create_formatter, default_transcript_path, feed_transcription_audio,
     finalize_transcription, start_transcription,
 };
+use usage::Args;
 
 use super::Run;
 use super::decode::{CANONICAL_SAMPLE_RATE_HZ, DecodedAudioInfo, chunk_pcm, decode_to_canonical};
@@ -443,9 +443,7 @@ mod tests {
 
     #[test]
     fn prepare_rejects_missing_input() {
-        let args = parse_transcribe(&[
-            "/tmp/koe-definitely-missing-input-xyz.wav",
-        ]);
+        let args = parse_transcribe(&["/tmp/koe-definitely-missing-input-xyz.wav"]);
         let err = prepare(&args, &KoeConfig::default()).expect_err("missing");
         assert!(matches!(err, MainError::Io(_)));
     }

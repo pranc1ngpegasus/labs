@@ -1,7 +1,7 @@
 //! `koe list` — enumerate capture-able apps.
 
-use usage::Args;
 use koe_core::{enumerate_apps, native_provider_registered};
+use usage::Args;
 
 use super::Run;
 use super::apps_table::{format_apps_json, format_apps_table, prepare_apps};

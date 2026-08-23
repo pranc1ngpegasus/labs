@@ -135,7 +135,8 @@ mod tests {
 
     #[test]
     fn parses_record_list_sources() {
-        let cli = CliRoot::try_parse_from(&argv(&["koe", "record", "--list-sources"])).expect("parse");
+        let cli =
+            CliRoot::try_parse_from(&argv(&["koe", "record", "--list-sources"])).expect("parse");
         assert!(matches!(cli.command, Command::Record(_)));
     }
 
@@ -155,7 +156,8 @@ mod tests {
 
     #[test]
     fn parses_list_flags() {
-        let cli = CliRoot::try_parse_from(&argv(&["koe", "list", "--audio-only", "--json"])).expect("parse");
+        let cli = CliRoot::try_parse_from(&argv(&["koe", "list", "--audio-only", "--json"]))
+            .expect("parse");
         assert!(matches!(cli.command, Command::List(_)));
     }
 
@@ -178,7 +180,8 @@ mod tests {
 
     #[test]
     fn parses_permissions_check() {
-        let cli = CliRoot::try_parse_from(&argv(&["koe", "permissions", "--check", "--json"])).expect("parse");
+        let cli = CliRoot::try_parse_from(&argv(&["koe", "permissions", "--check", "--json"]))
+            .expect("parse");
         assert!(matches!(cli.command, Command::Permissions(_)));
     }
 
