@@ -4,7 +4,7 @@ name = "ren-workflow"
 version.workspace = true
 
 [dependencies]
-clap = { workspace = true, features = ["derive"] }
+usage.workspace = true
 rhai = { workspace = true, features = ["no_time", "serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

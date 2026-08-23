@@ -22,7 +22,7 @@ resolver = "3"
 axum = "0.8.6"
 base64 = "0.22.1"
 block2 = "0.6.2"
-clap = "4.6.6"
+usage = { package = "usage-rs", version = "6", features = ["validation"] }
 codewandler-markdown = "0.2.1"
 codewandler-markdown-ratatui = "0.2.1"
 color-eyre = "0.6.5"

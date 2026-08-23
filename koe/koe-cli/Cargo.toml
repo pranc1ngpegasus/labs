@@ -8,7 +8,7 @@ name = "koe"
 path = "src/main.rs"
 
 [dependencies]
-clap = { workspace = true, features = ["derive"] }
+usage.workspace = true
 koe-core = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

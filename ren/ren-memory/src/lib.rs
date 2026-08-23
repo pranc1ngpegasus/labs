@@ -1,3 +1,5 @@
+#![allow(clippy::pub_underscore_fields)] // usage-derive emits `__given_*` tracking fields
+
 mod capture;
 mod error;
 mod fsutil;
@@ -14,7 +16,7 @@ use std::{
     path::PathBuf,
 };
 
-use clap::{Args, Subcommand, ValueEnum};
+use usage::{Args, Subcommands, ValueEnum};
 use serde::Serialize;
 
 pub use capture::{CaptureEvent, CaptureResult, EVENT_SCHEMA};
@@ -34,13 +36,13 @@ use crate::error::Result;
 
 /// Command-line configuration for `ren memory`.
 #[derive(Args, Debug)]
-#[command(arg_required_else_help = true, subcommand_required = true)]
+#[usage(arg_required_else_help)]
 pub struct Config {
-    #[command(subcommand)]
-    command: Option<MemoryCommand>,
+    #[usage(subcommand)]
+    command: MemoryCommand,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommands)]
 enum MemoryCommand {
     /// Initializes user-scoped memory and registers a vault for a project.
     Init(InitArgs),
@@ -89,34 +91,34 @@ enum MemoryCommand {
 #[derive(Clone, Debug, Args)]
 struct VaultArgs {
     /// Selects a registered vault; inferred from the current directory by default.
-    #[arg(long, value_name = "ID")]
+    #[usage(long, value_name = "ID")]
     vault: Option<String>,
 }
 
 #[derive(Debug, Args)]
 struct InitArgs {
     /// Initializes user scope. Memory is user-scoped in this release.
-    #[arg(long)]
+    #[usage(long)]
     user: bool,
     /// Stable vault identifier; generated from the project path by default.
-    #[arg(long, value_name = "ID")]
+    #[usage(long, value_name = "ID")]
     vault: Option<String>,
     /// Markdown vault root; defaults under ~/.ren/memory/vaults.
-    #[arg(long, value_name = "PATH")]
+    #[usage(long, value_name = "PATH")]
     path: Option<PathBuf>,
     /// Project directory associated with the vault; defaults to the current directory.
-    #[arg(long, value_name = "PATH")]
+    #[usage(long, value_name = "PATH")]
     project: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
-#[command(arg_required_else_help = true, subcommand_required = true)]
+#[usage(arg_required_else_help)]
 struct HookArgs {
-    #[command(subcommand)]
-    command: Option<HookCommand>,
+    #[usage(subcommand)]
+    command: HookCommand,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommands)]
 enum HookCommand {
     /// Merges the ren-owned hook into the agent's user configuration.
     Install(HookTargetArgs),
@@ -129,77 +131,87 @@ enum HookCommand {
 #[derive(Clone, Debug, Args)]
 struct HookTargetArgs {
     /// Agent adapter. Codex is the initial supported adapter.
-    #[arg(long)]
+    #[usage(long)]
     agent: String,
     /// Operates on user configuration.
-    #[arg(long)]
+    #[usage(long)]
     user: bool,
 }
 
 #[derive(Debug, Args)]
 struct IngestHookArgs {
-    #[arg(long)]
+    #[usage(long)]
     agent: String,
-    #[arg(long)]
+    #[usage(long)]
     event: String,
     /// Suppresses stdout for lifecycle-hook execution.
-    #[arg(long, hide = true)]
+    #[usage(long, hide)]
     quiet: bool,
 }
 
 #[derive(Debug, Args)]
 struct CaptureArgs {
-    #[command(flatten)]
+    #[usage(flatten)]
     vault: VaultArgs,
     /// Optional title. Otherwise the first non-empty content line is used.
-    #[arg(long)]
+    #[usage(long)]
     title: Option<String>,
     /// Note content. Reads stdin when omitted.
-    #[arg(value_name = "CONTENT")]
+    #[usage(value_name = "CONTENT")]
     content: Option<String>,
 }
 
 #[derive(Debug, Args)]
 struct IndexArgs {
-    #[command(flatten)]
+    #[usage(flatten)]
     vault: VaultArgs,
     /// Deletes and reconstructs all disposable projection state.
-    #[arg(long)]
+    #[usage(long)]
     rebuild: bool,
 }
 
 #[derive(Debug, Args)]
 struct ListArgs {
-    #[command(flatten)]
+    #[usage(flatten)]
     vault: VaultArgs,
-    #[arg(long = "type", value_enum)]
+    #[usage(long = "type", value_enum)]
     note_type: Option<NoteType>,
-    #[arg(long, value_enum)]
+    #[usage(long, value_enum)]
     state: Option<NoteState>,
 }
 
 #[derive(Debug, Args)]
 struct IdArgs {
     id: String,
-    #[command(flatten)]
+    #[usage(flatten)]
     vault: VaultArgs,
 }
 
 #[derive(Debug, Args)]
 struct SearchArgs {
     query: String,
-    #[command(flatten)]
+    #[usage(flatten)]
     vault: VaultArgs,
-    #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u16).range(1..=1000))]
+    #[usage(
+        long,
+        default = "20",
+        validate = "int(value) >= 1 && int(value) <= 1000",
+        validate_error = "must be between 1 and 1000"
+    )]
     limit: u16,
 }
 
 #[derive(Debug, Args)]
 struct RelatedArgs {
     id: String,
-    #[command(flatten)]
+    #[usage(flatten)]
     vault: VaultArgs,
-    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=32))]
+    #[usage(
+        long,
+        default = "1",
+        validate = "int(value) >= 1 && int(value) <= 32",
+        validate_error = "must be between 1 and 32"
+    )]
     depth: u8,
 }
 
@@ -207,46 +219,46 @@ struct RelatedArgs {
 struct PathArgs {
     from: String,
     to: String,
-    #[command(flatten)]
+    #[usage(flatten)]
     vault: VaultArgs,
 }
 
 #[derive(Debug, Args)]
 struct PromoteArgs {
     ids: Vec<String>,
-    #[command(flatten)]
+    #[usage(flatten)]
     vault: VaultArgs,
     /// Explicitly accepts and applies the displayed proposal.
-    #[arg(long)]
+    #[usage(long)]
     apply: bool,
     /// Applies one previously returned proposal operation.
-    #[arg(long, requires = "apply", value_name = "KEY")]
+    #[usage(long, requires("--apply"), value_name = "KEY")]
     operation: Option<String>,
 }
 
 #[derive(Debug, Args)]
 struct LinkArgs {
     from: String,
-    #[arg(value_enum)]
+    #[usage(value_enum)]
     relation: Relation,
     to: String,
-    #[command(flatten)]
+    #[usage(flatten)]
     vault: VaultArgs,
     /// Human-readable evidence for the accepted relation.
-    #[arg(long)]
+    #[usage(long)]
     reason: String,
 }
 
 #[derive(Debug, Args)]
 struct ReviseArgs {
     id: String,
-    #[command(flatten)]
+    #[usage(flatten)]
     vault: VaultArgs,
-    #[arg(long, conflicts_with = "clear_title")]
+    #[usage(long, conflicts("--clear-title"))]
     title: Option<String>,
-    #[arg(long, conflicts_with = "title")]
+    #[usage(long, conflicts("--title"))]
     clear_title: bool,
-    #[arg(long)]
+    #[usage(long)]
     body: Option<String>,
 }
 
@@ -259,9 +271,9 @@ enum ExportFormat {
 
 #[derive(Debug, Args)]
 struct ExportArgs {
-    #[command(flatten)]
+    #[usage(flatten)]
     vault: VaultArgs,
-    #[arg(long, value_enum, default_value_t = ExportFormat::Markdown)]
+    #[usage(long, value_enum, default = "markdown")]
     format: ExportFormat,
 }
 
@@ -272,30 +284,27 @@ struct ExportArgs {
 /// Returns validation, filesystem, or `SQLite` failures from the selected operation.
 pub fn run(config: Config) -> std::result::Result<(), MemoryError> {
     match config.command {
-        Some(MemoryCommand::Init(args)) => run_init(&args),
-        Some(MemoryCommand::Hook(args)) => run_hook(&args),
-        Some(MemoryCommand::IngestHook(args)) => run_ingest_hook(&args),
-        Some(MemoryCommand::Capture(args)) => run_capture(&args),
-        Some(MemoryCommand::Sync(args)) => run_sync(&args, false),
-        Some(MemoryCommand::Index(args)) => run_sync(&args.vault, args.rebuild),
-        Some(MemoryCommand::List(args)) => run_list(&args),
-        Some(MemoryCommand::Show(args)) => run_show(&args),
-        Some(MemoryCommand::Search(args)) => run_search(&args),
-        Some(MemoryCommand::Deps(args)) => run_edge_query(&args, EdgeQuery::Deps),
-        Some(MemoryCommand::Refs(args)) => run_edge_query(&args, EdgeQuery::Refs),
-        Some(MemoryCommand::Backlinks(args)) => run_edge_query(&args, EdgeQuery::Backlinks),
-        Some(MemoryCommand::Related(args)) => run_related(&args),
-        Some(MemoryCommand::Path(args)) => run_path(&args),
-        Some(MemoryCommand::Orphans(args)) => run_orphans(&args),
-        Some(MemoryCommand::Promote(args)) => run_promote(&args),
-        Some(MemoryCommand::Link(args)) => run_link(&args),
-        Some(MemoryCommand::Revise(args)) => run_revise(&args),
-        Some(MemoryCommand::Archive(args)) => run_archive(&args),
-        Some(MemoryCommand::Export(args)) => run_export(&args),
-        Some(MemoryCommand::Doctor(args)) => run_doctor(&args),
-        None => Err(MemoryError::InvalidConfig(
-            "a memory subcommand is required".into(),
-        )),
+        MemoryCommand::Init(args) => run_init(&args),
+        MemoryCommand::Hook(args) => run_hook(&args),
+        MemoryCommand::IngestHook(args) => run_ingest_hook(&args),
+        MemoryCommand::Capture(args) => run_capture(&args),
+        MemoryCommand::Sync(args) => run_sync(&args, false),
+        MemoryCommand::Index(args) => run_sync(&args.vault, args.rebuild),
+        MemoryCommand::List(args) => run_list(&args),
+        MemoryCommand::Show(args) => run_show(&args),
+        MemoryCommand::Search(args) => run_search(&args),
+        MemoryCommand::Deps(args) => run_edge_query(&args, EdgeQuery::Deps),
+        MemoryCommand::Refs(args) => run_edge_query(&args, EdgeQuery::Refs),
+        MemoryCommand::Backlinks(args) => run_edge_query(&args, EdgeQuery::Backlinks),
+        MemoryCommand::Related(args) => run_related(&args),
+        MemoryCommand::Path(args) => run_path(&args),
+        MemoryCommand::Orphans(args) => run_orphans(&args),
+        MemoryCommand::Promote(args) => run_promote(&args),
+        MemoryCommand::Link(args) => run_link(&args),
+        MemoryCommand::Revise(args) => run_revise(&args),
+        MemoryCommand::Archive(args) => run_archive(&args),
+        MemoryCommand::Export(args) => run_export(&args),
+        MemoryCommand::Doctor(args) => run_doctor(&args),
     }
 }
 
@@ -321,17 +330,13 @@ fn run_init(args: &InitArgs) -> Result<()> {
 }
 
 fn run_hook(args: &HookArgs) -> Result<()> {
-    let command = args
-        .command
-        .as_ref()
-        .ok_or_else(|| MemoryError::InvalidConfig("a hook subcommand is required".into()))?;
-    let target = match command {
+    let target = match &args.command {
         HookCommand::Install(target)
         | HookCommand::Status(target)
         | HookCommand::Uninstall(target) => target,
     };
     validate_hook_target(target)?;
-    let status = match command {
+    let status = match &args.command {
         HookCommand::Install(_) => hook::install_codex_user()?,
         HookCommand::Status(_) => hook::status_codex_user()?,
         HookCommand::Uninstall(_) => hook::uninstall_codex_user()?,

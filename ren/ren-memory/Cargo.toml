@@ -4,7 +4,7 @@ name = "ren-memory"
 version.workspace = true
 
 [dependencies]
-clap = { workspace = true, features = ["derive"] }
+usage.workspace = true
 fs2.workspace = true
 ignore.workspace = true
 jiff.workspace = true

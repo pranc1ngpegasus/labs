@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use clap::ValueEnum;
+use usage::ValueEnum;
 
 use crate::WorkflowError;
 

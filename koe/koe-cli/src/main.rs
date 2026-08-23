@@ -7,32 +7,32 @@ mod signals;
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
 use thiserror::Error;
+use usage::{Cli, Subcommands};
 
 use commands::{InfoArgs, ListArgs, PermissionsArgs, RecordArgs, Run, TranscribeArgs};
 use config::KoeConfig;
 
-#[derive(Debug, Parser)]
-#[command(
-    name = "koe",
+#[derive(Debug, Cli)]
+#[usage(
+    bin = "koe",
     version = env!("CARGO_PKG_VERSION"),
     about = "Capture, transcribe, and inspect system audio on macOS",
-    arg_required_else_help = true,
+    arg_required_else_help,
 )]
-struct Cli {
+struct CliRoot {
     /// Path to config file (default: ~/.config/koe/config.toml).
-    #[arg(long, global = true)]
+    #[usage(long, global)]
     config: Option<PathBuf>,
 
-    #[command(subcommand)]
+    #[usage(subcommand)]
     command: Command,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommands)]
 enum Command {
     /// Start a recording with optional transcription.
-    Record(Box<RecordArgs>),
+    Record(RecordArgs),
     /// List capture-able apps and audio activity.
     List(ListArgs),
     /// Transcribe an existing audio file (offline).
@@ -109,10 +109,10 @@ fn main() {
 fn run() -> Result<(), MainError> {
     let _ = koe_core::install_default_native_provider();
 
-    let cli = Cli::parse();
+    let cli = CliRoot::parse();
     let config = load_config(cli.config.as_deref())?;
     match cli.command {
-        Command::Record(args) => (*args).run(&config),
+        Command::Record(args) => args.run(&config),
         Command::List(args) => args.run(&config),
         Command::Transcribe(args) => args.run(&config),
         Command::Permissions(args) => args.run(&config),
@@ -127,23 +127,27 @@ fn load_config(explicit: Option<&std::path::Path>) -> Result<KoeConfig, MainErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
+    use std::ffi::OsStr;
+
+    fn argv<'a>(args: &'a [&'a str]) -> Vec<&'a OsStr> {
+        args.iter().map(|&s| OsStr::new(s)).collect()
+    }
 
     #[test]
     fn parses_record_list_sources() {
-        let cli = Cli::try_parse_from(["koe", "record", "--list-sources"]).expect("parse");
+        let cli = CliRoot::try_parse_from(&argv(&["koe", "record", "--list-sources"])).expect("parse");
         assert!(matches!(cli.command, Command::Record(_)));
     }
 
     #[test]
     fn parses_global_config_flag() {
-        let cli = Cli::try_parse_from([
+        let cli = CliRoot::try_parse_from(&argv(&[
             "koe",
             "--config",
             "/tmp/other.toml",
             "record",
             "--list-sources",
-        ])
+        ]))
         .expect("parse");
         assert_eq!(cli.config, Some(PathBuf::from("/tmp/other.toml")));
         assert!(matches!(cli.command, Command::Record(_)));
@@ -151,13 +155,13 @@ mod tests {
 
     #[test]
     fn parses_list_flags() {
-        let cli = Cli::try_parse_from(["koe", "list", "--audio-only", "--json"]).expect("parse");
+        let cli = CliRoot::try_parse_from(&argv(&["koe", "list", "--audio-only", "--json"])).expect("parse");
         assert!(matches!(cli.command, Command::List(_)));
     }
 
     #[test]
     fn parses_transcribe_flags() {
-        let cli = Cli::try_parse_from([
+        let cli = CliRoot::try_parse_from(&argv(&[
             "koe",
             "transcribe",
             "--format",
@@ -167,20 +171,20 @@ mod tests {
             "--start-at",
             "30s",
             "meeting.ogg",
-        ])
+        ]))
         .expect("parse");
         assert!(matches!(cli.command, Command::Transcribe(_)));
     }
 
     #[test]
     fn parses_permissions_check() {
-        let cli = Cli::try_parse_from(["koe", "permissions", "--check", "--json"]).expect("parse");
+        let cli = CliRoot::try_parse_from(&argv(&["koe", "permissions", "--check", "--json"])).expect("parse");
         assert!(matches!(cli.command, Command::Permissions(_)));
     }
 
     #[test]
     fn parses_info() {
-        let cli = Cli::try_parse_from(["koe", "info", "--json"]).expect("parse");
+        let cli = CliRoot::try_parse_from(&argv(&["koe", "info", "--json"])).expect("parse");
         assert!(matches!(cli.command, Command::Info(_)));
     }
 

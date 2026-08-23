@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use clap::Parser;
+use usage::Args;
 use koe_core::{
     AudioSourceConfig, OutputFormat, PipelineConfig, PipelineError, RecordingError,
     RecordingPipeline, StopResult, default_transcript_path, enumerate_apps,
@@ -32,47 +32,47 @@ const STATUS_INTERVAL: Duration = Duration::from_millis(100);
 ///
 /// Overridable fields are `Option` so config file values can fill gaps
 /// (CLI > config > built-in). `--no-*` bools force-disable when set.
-#[derive(Debug, Parser)]
+#[derive(Debug, Args)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct RecordArgs {
     /// Audio source: `system`, `mic`, or `both` (default: system).
-    #[arg(long)]
+    #[usage(long)]
     pub source: Option<String>,
 
     /// Capture system audio from an app bundle id.
-    #[arg(long)]
+    #[usage(long)]
     pub app_id: Option<String>,
 
     /// Capture system audio from a process id.
-    #[arg(long)]
+    #[usage(long)]
     pub pid: Option<i32>,
 
     /// Capture from a display id (not yet supported).
-    #[arg(long)]
+    #[usage(long)]
     pub display: Option<u32>,
 
     /// Print available capture sources and exit.
-    #[arg(long)]
+    #[usage(long)]
     pub list_sources: bool,
 
     /// Output sample rate in Hz (only `48000` is supported).
-    #[arg(long)]
+    #[usage(long)]
     pub sample_rate: Option<u32>,
 
     /// Output channel count (only `2` is supported).
-    #[arg(long)]
+    #[usage(long)]
     pub channels: Option<u8>,
 
     /// Disable acoustic echo cancellation for `--source both`.
-    #[arg(long)]
+    #[usage(long)]
     pub no_aec: bool,
 
     /// Disable comfort noise in AEC output.
-    #[arg(long)]
+    #[usage(long)]
     pub no_comfort_noise: bool,
 
     /// Speech recognition locale (BCP-47).
-    #[arg(long)]
+    #[usage(long)]
     pub locale: Option<String>,
 
     /// Speech engine: `auto` (default), `on-device`, or `network`.
@@ -80,51 +80,51 @@ pub struct RecordArgs {
     /// `on-device` never sends audio to Apple; it errors if unavailable.
     /// `network` always uses Apple's servers. `auto` prefers on-device and
     /// falls back to network with a warning.
-    #[arg(long)]
+    #[usage(long)]
     pub engine: Option<String>,
 
     /// Record audio only; skip transcription.
-    #[arg(long)]
+    #[usage(long)]
     pub no_transcribe: bool,
 
     /// Print supported speech locales and exit.
-    #[arg(long)]
+    #[usage(long)]
     pub list_locales: bool,
 
     /// Encoded audio output path.
-    #[arg(
+    #[usage(
         short = 'o',
         long,
-        required_unless_present_any = ["list_sources", "list_locales"]
+        required_unless("--list-sources", "--list-locales")
     )]
     pub output: Option<PathBuf>,
 
     /// Audio container: `ogg`, `wav`, or `flac`.
-    #[arg(long)]
+    #[usage(long)]
     pub format: Option<String>,
 
     /// Transcript format: `txt`, `srt`, `vtt`, or `json`.
-    #[arg(long)]
+    #[usage(long)]
     pub transcript_format: Option<String>,
 
     /// Transcript output path (default: `<output>.<transcript-format>`).
-    #[arg(long)]
+    #[usage(long)]
     pub transcript_output: Option<PathBuf>,
 
     /// Max recording duration (e.g. `30s`, `30m`, `1h`, `2h30m`).
-    #[arg(long)]
+    #[usage(long)]
     pub duration: Option<String>,
 
     /// Max encoded output size (e.g. `500M`, `2G`).
-    #[arg(long)]
+    #[usage(long)]
     pub max_size: Option<String>,
 
     /// Stop after this much continuous silence (same syntax as `--duration`).
-    #[arg(long)]
+    #[usage(long)]
     pub silence_timeout: Option<String>,
 
     /// Play captured audio through the default output device.
-    #[arg(short = 'm', long)]
+    #[usage(short = 'm', long)]
     pub monitor: bool,
 }
 
@@ -733,69 +733,86 @@ fn map_pipeline_error(err: PipelineError) -> MainError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
     use std::path::Path;
 
-    use clap::Parser;
     use koe_core::TranscriptFormat;
+    use usage::{Cli, Subcommands};
+
+    #[derive(Cli)]
+    #[usage(bin = "koe")]
+    struct TestCli {
+        #[usage(subcommand)]
+        command: TestCommand,
+    }
+
+    #[derive(Subcommands)]
+    enum TestCommand {
+        Record(RecordArgs),
+    }
+
+    fn parse_record(args: &[&str]) -> RecordArgs {
+        let argv: Vec<&OsStr> = ["koe", "record"]
+            .into_iter()
+            .chain(args.iter().copied())
+            .map(OsStr::new)
+            .collect();
+        match TestCli::try_parse_from(&argv).expect("parse").command {
+            TestCommand::Record(record) => record,
+        }
+    }
 
     #[test]
     fn parses_list_sources_without_output() {
-        let args = RecordArgs::try_parse_from(["record", "--list-sources"]).expect("parse");
+        let args = parse_record(&["--list-sources"]);
         assert!(args.list_sources);
         assert!(args.output.is_none());
     }
 
     #[test]
     fn parses_mic_no_transcribe() {
-        let args = RecordArgs::try_parse_from([
-            "record",
+        let args = parse_record(&[
             "--source",
             "mic",
             "--no-transcribe",
             "-o",
             "test.ogg",
-        ])
-        .expect("parse");
+        ]);
         assert!(args.no_transcribe);
         assert_eq!(args.source.as_deref(), Some("mic"));
     }
 
     #[test]
     fn prepare_rejects_noncanonical_rate() {
-        let args = RecordArgs::try_parse_from([
-            "record",
+        let args = parse_record(&[
             "--source",
             "mic",
             "--sample-rate",
             "44100",
             "-o",
             "out.wav",
-        ])
-        .expect("parse");
+        ]);
         let err = prepare_session(&args, &KoeConfig::default()).expect_err("rate");
         assert!(matches!(err, MainError::InvalidArgs(_)));
     }
 
     #[test]
     fn resolve_system_requires_target() {
-        let args = RecordArgs::try_parse_from(["record", "--source", "system", "-o", "out.ogg"])
-            .expect("parse");
+        let args = parse_record(&["--source", "system", "-o", "out.ogg"]);
         let err = resolve_source(&args, "system").expect_err("need target");
         assert!(matches!(err, MainError::InvalidArgs(_)));
     }
 
     #[test]
     fn resolve_both_with_app_id() {
-        let args = RecordArgs::try_parse_from([
-            "record",
+        let args = parse_record(&[
             "--source",
             "both",
             "--app-id",
             "us.zoom.xos",
             "-o",
             "out.ogg",
-        ])
-        .expect("parse");
+        ]);
         match resolve_source(&args, "both").expect("source") {
             AudioSourceConfig::Both { bundle_id } => assert_eq!(bundle_id, "us.zoom.xos"),
             other => panic!("unexpected {other:?}"),
@@ -818,8 +835,7 @@ mod tests {
 
     #[test]
     fn prepare_skips_transcript_when_no_transcribe() {
-        let args = RecordArgs::try_parse_from([
-            "record",
+        let args = parse_record(&[
             "--source",
             "mic",
             "--no-transcribe",
@@ -829,8 +845,7 @@ mod tests {
             "wav",
             "--duration",
             "30s",
-        ])
-        .expect("parse");
+        ]);
         let prepared = prepare_session(&args, &KoeConfig::default()).expect("prepare");
         assert!(!prepared.config.transcribe);
         assert!(prepared.config.transcript_output_path.is_none());
@@ -839,8 +854,7 @@ mod tests {
 
     #[test]
     fn prepare_inherits_config_defaults() {
-        let args = RecordArgs::try_parse_from(["record", "--source", "mic", "-o", "clip.flac"])
-            .expect("parse");
+        let args = parse_record(&["--source", "mic", "-o", "clip.flac"]);
         let file = config::parse_toml(
             r#"
 [defaults]
@@ -871,11 +885,19 @@ comfort-noise = false
 
     #[test]
     fn prepare_cli_overrides_config() {
-        let args = RecordArgs::try_parse_from([
-            "record", "--source", "mic", "--format", "wav", "--locale", "en-US", "--engine",
-            "network", "--no-aec", "-o", "out.wav",
-        ])
-        .expect("parse");
+        let args = parse_record(&[
+            "--source",
+            "mic",
+            "--format",
+            "wav",
+            "--locale",
+            "en-US",
+            "--engine",
+            "network",
+            "--no-aec",
+            "-o",
+            "out.wav",
+        ]);
         let file = config::parse_toml(
             r#"
 [defaults]
@@ -901,8 +923,7 @@ enabled = true
 
     #[test]
     fn prepare_resolves_relative_output_via_config_dir() {
-        let args = RecordArgs::try_parse_from(["record", "--source", "mic", "-o", "meet.ogg"])
-            .expect("parse");
+        let args = parse_record(&["--source", "mic", "-o", "meet.ogg"]);
         let mut file = KoeConfig::default();
         file.output.directory = Some("/tmp/koe-recs".into());
         let prepared = prepare_session(&args, &file).expect("prepare");
@@ -918,16 +939,14 @@ enabled = true
 
     #[test]
     fn prepare_resolves_relative_transcript_output() {
-        let args = RecordArgs::try_parse_from([
-            "record",
+        let args = parse_record(&[
             "--source",
             "mic",
             "-o",
             "meet.ogg",
             "--transcript-output",
             "notes.srt",
-        ])
-        .expect("parse");
+        ]);
         let mut file = KoeConfig::default();
         file.output.directory = Some("/tmp/koe-recs".into());
         let prepared = prepare_session(&args, &file).expect("prepare");

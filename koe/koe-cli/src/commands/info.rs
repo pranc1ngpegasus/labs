@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::process::Command;
 
-use clap::Parser;
+use usage::Args;
 use koe_core::{
     AudioDeviceInfo, available_disk_space, default_input_device, default_output_device,
     enabled_features, supported_speech_locales,
@@ -29,10 +29,10 @@ fn disk_check_path_from_home(home: Option<&std::ffi::OsStr>) -> PathBuf {
 }
 
 /// Show build and host system information.
-#[derive(Debug, Parser)]
+#[derive(Debug, Args)]
 pub struct InfoArgs {
     /// Output as JSON.
-    #[arg(long)]
+    #[usage(long)]
     json: bool,
 }
 
