@@ -61,7 +61,10 @@ pub trait AudioEncoder: Send {
     ///
     /// Returns [`Error`] when encoding or writing fails. The writer is left in
     /// an unspecified state after an error.
-    fn write_pcm(&mut self, pcm: &[i16]) -> Result<(), Error>;
+    fn write_pcm(
+        &mut self,
+        pcm: &[i16],
+    ) -> Result<(), Error>;
 
     /// Flushes remaining buffered audio and finalizes the container
     /// (header rewrite / final Ogg page), returning recording statistics.
@@ -73,11 +76,14 @@ pub trait AudioEncoder: Send {
 }
 
 impl Display for EncoderSpec {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
         let channel_label = match self.channels {
             1 => "mono",
             2 => "stereo",
-            other => return write!(f, "{}ch", other),
+            other => return write!(f, "{other}ch"),
         };
         write!(f, "{channel_label} {} Hz", self.sample_rate)
     }

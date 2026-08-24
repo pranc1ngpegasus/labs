@@ -1,5 +1,5 @@
---- a/shiguredo_opus-2026.2.0/build.rs	2006-07-24 10:21:28
-+++ b/shiguredo_opus-2026.2.0/build.rs	2026-08-24 17:15:27
+--- a/build.rs	2006-07-24 10:21:28
++++ b/build.rs	2026-08-24 17:15:27
 @@ -94,6 +94,12 @@
      let prebuilt_dir = out_dir.join("prebuilt");
      fs::create_dir_all(&prebuilt_dir).expect("failed to create prebuilt directory");

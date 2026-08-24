@@ -3,4 +3,4 @@
 //! Commands (`list`, `record`), signal handling, and progress output land in
 //! later milestones per design 03.
 
-fn main() {}
+const fn main() {}

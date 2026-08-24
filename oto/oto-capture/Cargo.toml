@@ -1,18 +1,27 @@
 [package]
-name = "oto-capture"
 edition.workspace = true
+name = "oto-capture"
 version.workspace = true
 
 # Platform backends are selected per target so the `windows` crate and other
 # unused backends never enter the build on other platforms (see design 05).
 [target.'cfg(target_os = "macos")'.dependencies]
-shiguredo_audio_device = { workspace = true, default-features = false, features = ["coreaudio", "default-coreaudio"] }
+shiguredo_audio_device = { workspace = true, default-features = false, features = [
+  "coreaudio",
+  "default-coreaudio",
+] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-shiguredo_audio_device = { workspace = true, default-features = false, features = ["pulse", "default-pulse"] }
+shiguredo_audio_device = { workspace = true, default-features = false, features = [
+  "default-pulse",
+  "pulse",
+] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-shiguredo_audio_device = { workspace = true, default-features = false, features = ["wasapi", "default-wasapi"] }
+shiguredo_audio_device = { workspace = true, default-features = false, features = [
+  "default-wasapi",
+  "wasapi",
+] }
 
 [dependencies]
 workspace-hack = { workspace = true }

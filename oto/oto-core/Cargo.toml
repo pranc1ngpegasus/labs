@@ -1,6 +1,6 @@
 [package]
-name = "oto-core"
 edition.workspace = true
+name = "oto-core"
 version.workspace = true
 
 [dependencies]

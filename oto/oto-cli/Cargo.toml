@@ -1,6 +1,6 @@
 [package]
-name = "oto-cli"
 edition.workspace = true
+name = "oto-cli"
 version.workspace = true
 
 [[bin]]

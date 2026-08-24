@@ -1,6 +1,6 @@
 [package]
-name = "oto-encode"
 edition.workspace = true
+name = "oto-encode"
 version.workspace = true
 
 [dependencies]
