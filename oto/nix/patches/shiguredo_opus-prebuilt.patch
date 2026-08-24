@@ -1,0 +1,23 @@
+--- a/build.rs	2006-07-24 10:21:28
++++ b/build.rs	2026-08-24 17:15:27
+@@ -94,6 +94,12 @@
+     let prebuilt_dir = out_dir.join("prebuilt");
+     fs::create_dir_all(&prebuilt_dir).expect("failed to create prebuilt directory");
+ 
++    // Nix (オフラインサンドボックス) 向け: fetchurl で取得済みの tarball を注入する。
++    // sha256 検証は Nix 側の fixed-output derivation が担保している。
++    if let Ok(tarball) = env::var("OPUS_PREBUILT_TARBALL") {
++        fs::copy(&tarball, &archive_path).expect("failed to copy prebuilt tarball");
++    } else {
++
+     // curl でアーカイブをダウンロード
+     eprintln!("prebuilt ライブラリをダウンロード中: {}", archive_url);
+     let status = Command::new("curl")
+@@ -120,6 +126,7 @@
+     // SHA256 を検証
+     verify_sha256(&archive_path, &sha256_path);
+ 
++    }
+     // tar で展開
+     let status = Command::new("tar")
+         .args(["xzf"])

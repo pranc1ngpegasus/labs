@@ -1,0 +1,14 @@
+[package]
+edition.workspace = true
+name = "oto-encode"
+version.workspace = true
+
+[dependencies]
+ogg = { workspace = true }
+rubato = { workspace = true }
+shiguredo_opus = { workspace = true }
+thiserror = { workspace = true }
+workspace-hack = { workspace = true }
+
+[lints]
+workspace = true

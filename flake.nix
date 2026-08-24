@@ -65,6 +65,69 @@
               || craneLib.filterCargoSources path type;
           };
 
+          # oto build prerequisites (design 05):
+          # - shiguredo_audio_device: cc + bindgen shims. Linux needs
+          #   PulseAudio headers (pkg-config) and libclang; macOS needs
+          #   libclang too (bindgen) while the frameworks come from the SDK.
+          # - shiguredo_opus: build.rs downloads a prebuilt libopus with curl,
+          #   which cannot work in a network-isolated sandbox. The build script
+          #   is patched (cargoPatches) to accept an injected tarball, fetched
+          #   here as a fixed-output derivation (per release asset sha256).
+          opusTargets = {
+            x86_64-linux = {
+              asset = "libopus-ubuntu-24.04_x86_64.tar.gz";
+              sha256 = "c028f032718147b82c3ba4a4148548c95106717f081f32ad14a2de3b864e6f8f";
+              opusTarget = "ubuntu_24.04_x86_64";
+            };
+            aarch64-linux = {
+              asset = "libopus-ubuntu-24.04_arm64.tar.gz";
+              sha256 = "129f4d6ccbb8598f97d8ba77fab5db431ead7151f3b86a6253fc55a4c441c449";
+              opusTarget = "ubuntu_24.04_arm64";
+            };
+            aarch64-darwin = {
+              asset = "libopus-macos_arm64.tar.gz";
+              sha256 = "ebb588a606c050744cc673159df77b256686650506f3f7eb5111dbf40a6000ad";
+              opusTarget = "macos_arm64";
+            };
+          };
+          opusPrebuilt = pkgs.fetchurl {
+            url = "https://github.com/shiguredo/opus-rs/releases/download/2026.2.0/${opusTargets.${system}.asset}";
+            sha256 = opusTargets.${system}.sha256;
+          };
+          audioNativeBuildInputs = [
+            pkgs.pkg-config
+            pkgs.llvmPackages.libclang
+          ];
+          audioBuildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.libpulseaudio.dev ];
+          audioEnv = {
+            LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+            # get_target_platform() panics on non-Ubuntu systems; the value is
+            # only used to name the (bypassed) download URL.
+            OPUS_TARGET = opusTargets.${system}.opusTarget;
+            OPUS_PREBUILT_TARBALL = "${opusPrebuilt}";
+          };
+          # crane's `cargoPatches` do not touch transitive (vendored) crates, so
+          # the build.rs change is applied here: `overrideVendorCargoPackage`
+          # patches the vendored crate source. This is safe because crane writes
+          # an empty `{"files":{}}` checksum map, so no checksum revalidation
+          # happens after patching.
+          opusPatch = ./oto/nix/patches/shiguredo_opus-prebuilt.patch;
+          overrideVendorCargoPackage =
+            p: drv:
+            if p.name == "shiguredo_opus" then
+              pkgs.runCommandLocal "cargo-package-shiguredo_opus-patched" { } ''
+                cp -a ${drv} $out
+                chmod -R u+w $out
+                patch -d $out -p1 < ${opusPatch}
+              ''
+            else
+              drv;
+          # The override hook must not leak into the derivation env, so build
+          # the vendored source tree here and pass it down as `cargoVendorDir`.
+          cargoVendorDir = craneLib.vendorCargoDeps {
+            inherit src overrideVendorCargoPackage;
+          };
+
           # The whole workspace builds in a single derivation (see the
           # package.nix files), so dependency artifacts are built once here
           # and shared by packages and checks alike.
@@ -75,10 +138,13 @@
           # would otherwise rebuild on every commit and on every file save
           # while the tree is dirty (`dirtyShortRev` changes each edit).
           commonArgs = {
-            inherit src;
+            inherit src cargoVendorDir;
             pname = "labs-workspace";
             version = "0.0.0";
             strictDeps = true;
+            nativeBuildInputs = audioNativeBuildInputs;
+            buildInputs = audioBuildInputs;
+            env = audioEnv;
           };
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
         in
@@ -94,9 +160,12 @@
               pname = "labs-workspace";
             };
             clippy = craneLib.cargoClippy {
-              inherit src cargoArtifacts;
+              inherit src cargoArtifacts cargoVendorDir;
               pname = "labs-workspace";
               cargoClippyExtraArgs = "--all-targets --all-features -- --deny warnings";
+              nativeBuildInputs = audioNativeBuildInputs;
+              buildInputs = audioBuildInputs;
+              env = audioEnv;
             };
             hakari = craneLib.mkCargoDerivation {
               inherit src;
@@ -113,10 +182,13 @@
               ];
             };
             test = craneLib.cargoTest {
-              inherit src cargoArtifacts;
+              inherit src cargoArtifacts cargoVendorDir;
               pname = "labs-workspace";
-              # sui-tools' edit tests run `git init` in a temp dir.
-              nativeBuildInputs = [ pkgs.git ];
+              # sui-tools' edit tests run `git init` in a temp dir; oto's test
+              # binaries link the dynamic PulseAudio client library on Linux.
+              nativeBuildInputs = [ pkgs.git ] ++ audioNativeBuildInputs;
+              buildInputs = audioBuildInputs;
+              env = audioEnv;
             };
           };
 
@@ -163,6 +235,19 @@
                 cargoArtifacts
                 ;
             };
+            oto = import ./oto/package.nix {
+              inherit (pkgs) stdenv libpulseaudio autoPatchelfHook;
+              inherit
+                craneLib
+                src
+                version
+                cargoArtifacts
+                cargoVendorDir
+                audioNativeBuildInputs
+                audioBuildInputs
+                audioEnv
+                ;
+            };
             default = pkgs.symlinkJoin {
               name = "labs-all";
               paths = [
@@ -170,6 +255,7 @@
                 config.packages.sui
                 config.packages.koe
                 config.packages.ren
+                config.packages.oto
               ];
             };
           };
