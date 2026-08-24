@@ -24,6 +24,8 @@ shiguredo_audio_device = { workspace = true, default-features = false, features 
 ] }
 
 [dependencies]
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
 workspace-hack = { workspace = true }
 
 [lints]
