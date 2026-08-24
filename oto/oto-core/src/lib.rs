@@ -6,9 +6,14 @@
 //!
 //! The CLI talks to this crate only — never to the leaf crates directly.
 
-pub use oto_capture::DeviceInfo;
+pub mod pipeline;
+pub mod recorder;
 
 pub use oto_capture::Error as CaptureError;
+pub use oto_capture::{AudioFormat, DeviceInfo};
+pub use oto_encode::{EncoderSpec, EncoderStats, Tags};
+
+pub use recorder::{OutputFormat, RecordingConfig, RecordingError, RecordingSession};
 
 /// Enumerates the system's input devices.
 ///
