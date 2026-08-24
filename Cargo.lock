@@ -4996,7 +4996,6 @@ version = "0.0.0"
 dependencies = [
  "aho-corasick",
  "bitflags 2.13.1",
- "byteorder",
  "camino",
  "cc",
  "compact_str",
@@ -5016,7 +5015,6 @@ dependencies = [
  "memchr",
  "minimal-lexical",
  "nom",
- "num-traits",
  "once_cell",
  "percent-encoding",
  "proc-macro2",
@@ -5044,7 +5042,6 @@ dependencies = [
  "toml_writer",
  "tracing",
  "tracing-core",
- "typenum",
  "unicode-truncate",
  "winnow",
 ]

@@ -15,7 +15,6 @@ version = "0.0.0"
 [dependencies]
 aho-corasick = { version = "1" }
 bitflags = { version = "2", default-features = false, features = ["std"] }
-byteorder = { version = "1" }
 camino = { version = "1", default-features = false, features = ["serde1"] }
 compact_str = { version = "0.9", default-features = false, features = ["std"] }
 crossbeam-utils = { version = "0.8" }
@@ -34,7 +33,6 @@ kasuari = { version = "0.4", default-features = false, features = ["std"] }
 memchr = { version = "2", features = ["use_std"] }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7" }
-num-traits = { version = "0.2" }
 once_cell = { version = "1", features = ["portable-atomic"] }
 percent-encoding = { version = "2" }
 ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
@@ -58,7 +56,6 @@ toml_parser = { version = "1" }
 toml_writer = { version = "1" }
 tracing = { version = "0.1", default-features = false, features = ["log", "std"] }
 tracing-core = { version = "0.1" }
-typenum = { version = "1", default-features = false, features = ["const-generics"] }
 unicode-truncate = { version = "2", default-features = false, features = ["std"] }
 winnow = { version = "1" }
 
