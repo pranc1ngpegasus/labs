@@ -18,7 +18,7 @@ depends: [01-requirements, 05-nix-packaging]
 
 | # | PR(タイトル例) | 内容 | 完了条件 |
 |---|---|---|---|
-| 1 | `chore: add oto crates to workspace` | `oto/` に 4 クレート(`oto-capture` / `oto-encode` / `oto-core` / `oto-cli`)をスキャフォールド、workspace/Cargo.toml の members + `[workspace.dependencies]` への path 依存追加、計画済み依存の一括追加(`shiguredo_audio_device` / `shiguredo_opus` / `ogg` / `rubato` / `serde_json` / `jiff`)、workspace-hack 再生成、flake に `libpulse`/`libclang`/FOD/`cargoPatches` 追加、`oto/package.nix`、`packages.oto` と default への追加 | `nix flake check` 通過(deps ビルドが Linux で通る) |
+| 1 | `chore: add oto crates to workspace` | `oto/` に 4 クレート(`oto-capture` / `oto-encode` / `oto-core` / `oto-cli`)をスキャフォールド、workspace/Cargo.toml の members + `[workspace.dependencies]` への path 依存追加、計画済み依存の一括追加(`shiguredo_audio_device` / `shiguredo_opus` / `ogg` / `rubato` / `serde_json` / `jiff`)、workspace-hack 再生成、flake に `libpulseaudio`/`libclang`/FOD/vendor パッチ 追加、`oto/package.nix`、`packages.oto` と default への追加 | `nix flake check` 通過(deps ビルドが Linux で通る) |
 | 2 | `feat(oto): device listing` | `oto list`(+ `--json`)。バージョン表示は `--version`(usage-rs 生成)で足りるためサブコマンドは作らない。Capture 未使用 | check 通過 + 実機で列挙 |
 | 3 | `feat(oto): wav recording` | capture → channel → WAV ライタ、Ctrl-C/SIGTERM/二度押し、`--duration`、進行表示、サマリ。`wav.rs` ヘッドレステスト | check 通過 + 実機で .wav 録音 |
 | 4 | `feat(oto): opus+ogg recording` | convert(i16/ダウンミックス/リサンプル)、`ogg_opus.rs`(RFC 7845)、拡張子ディスパッチ、`ogg_opus.rs` 往復テスト | check 通過 + 実機で .ogg 録音・ffprobe 確認 |

@@ -98,7 +98,7 @@
             pkgs.pkg-config
             pkgs.llvmPackages.libclang
           ];
-          audioBuildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.libpulse.dev ];
+          audioBuildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.libpulseaudio.dev ];
           audioEnv = {
             LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
             # get_target_platform() panics on non-Ubuntu systems; the value is
@@ -236,7 +236,7 @@
                 ;
             };
             oto = import ./oto/package.nix {
-              inherit (pkgs) stdenv libpulse autoPatchelfHook;
+              inherit (pkgs) stdenv libpulseaudio autoPatchelfHook;
               inherit
                 craneLib
                 src

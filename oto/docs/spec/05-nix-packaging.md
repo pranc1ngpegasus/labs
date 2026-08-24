@@ -30,7 +30,7 @@ oto も同じパターンに載せる。追加が必要なのは「oto 固有の
 
 | system | ビルド時 | 実行時 |
 |---|---|---|
-| Linux | `pkg-config`、`libpulse.dev`(PulseAudio ヘッダ + `.pc`)、`libclang`(bindgen 用)、`tar`(stdenv) | `libpulse.so.0`(動的リンク) |
+| Linux | `pkg-config`、`libpulseaudio.dev`(PulseAudio ヘッダ + `libpulse.pc`)、`libclang`(bindgen 用)、`tar`(stdenv) | `libpulse.so.0`(動的リンク) |
 | macOS | `libclang`(bindgen 用)。CoreAudio / AudioToolbox / Foundation はシステム SDK | なし(フレームワークは OS 標準) |
 | Windows | なし(WASAPI は `windows` crate、behind feature) | なし |
 
@@ -143,7 +143,7 @@ let
     sha256 = opusTargets.${system}.sha256;
   };
   audioNativeBuildInputs = [ pkgs.pkg-config pkgs.llvmPackages.libclang ];
-  audioBuildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.libpulse.dev ];
+  audioBuildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.libpulseaudio.dev ];
   audioEnv = {
     LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
     OPUS_TARGET = "ubuntu_24.04";      # get_target_platform の panic 回避(値自体は未使用)
@@ -223,7 +223,7 @@ default feature(全 backend + `windows` crate)を有効にすると、非 Window
 koe/sui のパターンに「**cp + autoPatchelfHook**」を足した形:
 
 ```nix
-{ stdenv, craneLib, src, version, cargoArtifacts, libpulse, autoPatchelfHook }:
+{ stdenv, craneLib, src, version, cargoArtifacts, cargoVendorDir, libpulseaudio, autoPatchelfHook }:
 let
   workspaceBuild = craneLib.buildPackage {
     inherit src version cargoArtifacts;
@@ -240,7 +240,7 @@ stdenv.mkDerivation {
   dontBuild = true;
   dontUnpack = true;
   nativeBuildInputs = pkgs.lib.optionals stdenv.isLinux [ autoPatchelfHook ];
-  buildInputs = pkgs.lib.optionals stdenv.isLinux [ libpulse ];
+  buildInputs = pkgs.lib.optionals stdenv.hostPlatform.isLinux [ libpulseaudio ];
   installPhase = ''
     runHook preInstall
     mkdir -p $out/bin
@@ -255,12 +255,12 @@ stdenv.mkDerivation {
 }
 ```
 
-flake.nix の `packages` に `oto = import ./oto/package.nix { inherit (pkgs) stdenv libpulse autoPatchelfHook; inherit craneLib src version cargoArtifacts; };` を追加し、`default`(symlinkJoin)にも加える。
+flake.nix の `packages` に `oto = import ./oto/package.nix { inherit (pkgs) stdenv libpulseaudio autoPatchelfHook; inherit craneLib src version cargoArtifacts cargoVendorDir audioNativeBuildInputs audioBuildInputs audioEnv; };` を追加し、`default`(symlinkJoin)にも加える。
 
 ## devShell
 
 ローカル開発(`cargo build`)でも同じ前提が要る: Linux の devShell に `pkg-config`・
-`libpulse.dev`・`llvmPackages.libclang` と `LIBCLANG_PATH` env を追加する(現状 devShell は
+`libpulseaudio.dev`・`llvmPackages.libclang` と `LIBCLANG_PATH` env を追加する(現状 devShell は
 rustToolchain のみ)。Windows 開発者は plain Cargo でよく、ネットワークがあれば
 prebuilt libopus を build.rs が自動取得する。
 

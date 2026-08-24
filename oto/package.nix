@@ -29,7 +29,7 @@
   audioBuildInputs, # libpulse.dev on Linux
   audioEnv, # LIBCLANG_PATH / OPUS_TARGET / OPUS_PREBUILT_TARBALL
   autoPatchelfHook, # Linux only: rpath for the dynamic PulseAudio client lib
-  libpulse, # Linux only: runtime dependency of the PulseAudio backend
+  libpulseaudio, # Linux only: runtime dependency of the PulseAudio backend
   version ? "0.0.0",
 }:
 let
@@ -60,7 +60,7 @@ stdenv.mkDerivation {
   dontUnpack = true;
 
   nativeBuildInputs = if stdenv.hostPlatform.isLinux then [ autoPatchelfHook ] else [ ];
-  buildInputs = if stdenv.hostPlatform.isLinux then [ libpulse ] else [ ];
+  buildInputs = if stdenv.hostPlatform.isLinux then [ libpulseaudio ] else [ ];
 
   installPhase = ''
     runHook preInstall
