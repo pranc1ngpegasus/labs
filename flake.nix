@@ -197,6 +197,7 @@
             };
             settings.global.excludes = [
               "koe/koe-native/generated/**"
+              "workspace-hack/Cargo.toml"
             ];
           };
         };
