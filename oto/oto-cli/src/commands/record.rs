@@ -44,7 +44,7 @@ pub struct RecordArgs {
     #[usage(long)]
     duration: Option<f64>,
 
-    /// Force the output format: `wav` or `ogg` (default: from extension).
+    /// Force the output format: `wav` or `ogg` (default: Ogg/Opus).
     #[usage(long)]
     format: Option<String>,
 
@@ -181,6 +181,7 @@ async fn await_signal(sig: &mut Option<tokio::signal::unix::Signal>) {
 }
 
 /// Resolves the output format from `--format`, falling back to the extension.
+/// Unknown or absent extensions default to Ogg/Opus (design 02).
 fn resolve_format(
     output: &Path,
     format: Option<&str>,
@@ -197,8 +198,8 @@ fn resolve_format(
         .and_then(|e| e.to_str())
         .map(str::to_ascii_lowercase)
     {
-        Some(e) if e == "ogg" || e == "opus" => Ok(OutputFormat::OggOpus),
-        _ => Ok(OutputFormat::Wav),
+        Some(e) if e == "wav" => Ok(OutputFormat::Wav),
+        _ => Ok(OutputFormat::OggOpus),
     }
 }
 
@@ -224,11 +225,11 @@ fn resolve_device_id(selector: Option<&str>) -> Result<Option<String>, MainError
     )))
 }
 
-/// Default output filename `oto-<timestamp>.wav` in the current directory,
-/// formatted as `oto-YYYYmmdd-HHMMSS.wav` (design 02).
+/// Default output filename `oto-<timestamp>.ogg` in the current directory,
+/// formatted as `oto-YYYYmmdd-HHMMSS.ogg` (design 02).
 fn default_output_path() -> PathBuf {
     let stamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S");
-    PathBuf::from(format!("oto-{stamp}.wav"))
+    PathBuf::from(format!("oto-{stamp}.ogg"))
 }
 
 /// Maps a [`RecordingError`] to a [`MainError`], treating startup failures as
@@ -269,9 +270,26 @@ mod tests {
             resolve_format(Path::new("a.wav"), None).unwrap(),
             OutputFormat::Wav
         );
+        // Unknown or absent extensions default to Ogg/Opus.
         assert_eq!(
             resolve_format(Path::new("a.txt"), None).unwrap(),
-            OutputFormat::Wav
+            OutputFormat::OggOpus
+        );
+        assert_eq!(
+            resolve_format(Path::new("noext"), None).unwrap(),
+            OutputFormat::OggOpus
+        );
+    }
+
+    #[test]
+    fn default_output_path_is_ogg() {
+        let path = default_output_path();
+        assert_eq!(path.extension().and_then(|e| e.to_str()), Some("ogg"));
+        assert!(
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("oto-")
         );
     }
 

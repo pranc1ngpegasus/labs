@@ -73,12 +73,12 @@ oto record [<output>] [--device <id-or-name>] [--channels <1|2>]
 
 | フラグ | 既定値 | 説明 |
 |---|---|---|
-| `<output>` | `oto-<timestamp>.wav` | 出力パス。拡張子で形式を判定 |
+| `<output>` | `oto-<timestamp>.ogg` | 出力パス。拡張子で形式を判定(既定は Ogg/Opus) |
 | `--device` | デフォルト入力 | `unique_id` 完全一致 → なければ `name` の部分一致(大文字小文字無視)。一致なしは exit 3 |
 | `--channels` | `1` | 要求チャンネル数。実機が別の値を返す場合は実機優先(WASAPI 共有モード等) |
 | `--bitrate` | `64` | Opus ビットレート(kbps)。WAV では無視 |
 | `--duration` | なし(Ctrl-C まで) | 指定秒数で自動停止。`--duration 90` / `--duration 1.5`(小数可) |
-| `--format` | 拡張子判定 | `wav` / `ogg` を明示指定。拡張子と異なる場合はこちらを優先 |
+| `--format` | 拡張子判定(既定 Ogg/Opus) | `wav` / `ogg` を明示指定。拡張子と異なる場合はこちらを優先 |
 | `--quiet` | false | 進行表示を抑制(ログは stderr にのみ) |
 
 実行中の表示(1 秒間隔で更新、stderr、`--quiet` で抑制):
@@ -99,8 +99,9 @@ Wrote recording-20260824-153000.ogg (1:23, 680 KB, 3 frames dropped)
 output extension:
   .ogg | .opus  → Opus (shiguredo_opus + ogg コンテナ)
   .wav          → WAV
-  other         → WAV (警告 + 拡張子 .wav へ補正しない。ユーザーの指定を尊重)
+  other         → Opus (既定。拡張子は補正しない。ユーザーの指定を尊重)
 --format が与えられた場合、拡張子より優先。
+既定の出力ファイル名も .ogg とする(oto-<timestamp>.ogg)。
 ```
 
 ## 終了コード
