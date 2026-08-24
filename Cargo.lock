@@ -656,7 +656,6 @@ dependencies = [
  "axum",
  "base64",
  "bytes",
- "clap",
  "futures",
  "getrandom 0.2.17",
  "reqwest",
@@ -668,6 +667,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tower",
+ "usage-rs",
  "wiremock",
 ]
 
@@ -1157,6 +1157,19 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "expr-lang"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ccbe01093a53933ac2e794bf8de543359ba840520304a6b93b8d00d0b99ceaf"
+dependencies = [
+ "indexmap",
+ "log",
+ "pest",
+ "pest_derive",
+ "regex",
 ]
 
 [[package]]
@@ -2024,7 +2037,6 @@ dependencies = [
 name = "koe-cli"
 version = "0.0.0"
 dependencies = [
- "clap",
  "koe-core",
  "serde",
  "serde_json",
@@ -2032,6 +2044,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "toml 1.1.4+spec-1.1.0",
+ "usage-rs",
 ]
 
 [[package]]
@@ -2633,6 +2646,48 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
+name = "pest"
+version = "2.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a07a60cc7a4d00c91f95c685609d1d2f79050e6804b70ebedd7650f0b839bcf"
+dependencies = [
+ "memchr",
+ "ucd-trie",
+]
+
+[[package]]
+name = "pest_derive"
+version = "2.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3a83744a5c8455b8b3e0dc5031362780a347c878bdd11584d1a8984228cc88d"
+dependencies = [
+ "pest",
+ "pest_generator",
+]
+
+[[package]]
+name = "pest_generator"
+version = "2.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0cd3451aa3de60d4b9a1e736885e4dea6b31617598026f12256ad566d63304a"
+dependencies = [
+ "pest",
+ "pest_meta",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "pest_meta"
+version = "2.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e04d3a0849e241d7dfce834c83b1c5edc8622009e8dd51a12ba1927c32f05496"
+dependencies = [
+ "pest",
+]
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2931,19 +2986,18 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "ren"
 version = "0.0.0"
 dependencies = [
- "clap",
  "ren-memory",
  "ren-workflow",
  "serde_json",
  "tempfile",
  "thiserror 2.0.20",
+ "usage-rs",
 ]
 
 [[package]]
 name = "ren-memory"
 version = "0.0.0"
 dependencies = [
- "clap",
  "fs2",
  "ignore",
  "jiff",
@@ -2956,6 +3010,7 @@ dependencies = [
  "thiserror 2.0.20",
  "toml_edit",
  "ulid",
+ "usage-rs",
  "yaml_serde",
 ]
 
@@ -2963,13 +3018,13 @@ dependencies = [
 name = "ren-workflow"
 version = "0.0.0"
 dependencies = [
- "clap",
  "rhai",
  "rustix",
  "serde",
  "serde_json",
  "sha2",
  "thiserror 2.0.20",
+ "usage-rs",
  "yaml_serde",
 ]
 
@@ -4387,6 +4442,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ucd-trie"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2896d95c02a80c6d6a5d6e953d479f5ddf2dfdb6a244441010e373ac0fb88971"
+
+[[package]]
 name = "ulid"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4565,6 +4626,43 @@ dependencies = [
  "idna",
  "percent-encoding",
  "serde",
+]
+
+[[package]]
+name = "usage-argv"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24b9737d4a78f9407c5cd035cedd6fee9ceb0b99e3287237cb2c86b66eea9cab"
+
+[[package]]
+name = "usage-derive"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21b230ac0b4408abfc7fdf134f77e9618d1d88a75e3056286e16f4c33d8b7d02"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
+]
+
+[[package]]
+name = "usage-rs"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28a7fe976bd4d6e61e94a5bb1303373a7b335d775de3cab053d825f674285300"
+dependencies = [
+ "usage-argv",
+ "usage-derive",
+ "usage-validation",
+]
+
+[[package]]
+name = "usage-validation"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fa74bcdc92ae9fa55984d99f2d5ecbcca1fabec0b2b945f848375cf8874afc9"
+dependencies = [
+ "expr-lang",
 ]
 
 [[package]]

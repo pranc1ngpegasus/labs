@@ -1,3 +1,5 @@
+#![allow(clippy::pub_underscore_fields)] // usage-derive emits `__given_*` tracking fields
+
 pub(crate) mod bridge;
 mod bundled;
 mod create;
@@ -14,12 +16,12 @@ mod schema;
 mod store;
 mod value;
 
-use clap::{Args, Subcommand};
 use serde_json::Value;
 use std::{
     fs,
     path::{Path, PathBuf},
 };
+use usage::{Args, Subcommands};
 
 pub use bridge::Agent;
 pub use engine::{CompiledWorkflow, Engine, PauseInfo, RunOptions, RunResult};
@@ -41,10 +43,10 @@ pub use schema::{tool_descriptor, validate_args};
 
 /// Command-line configuration for the `workflow` command group.
 #[derive(Args, Debug)]
-#[command(arg_required_else_help = true, subcommand_required = true)]
+#[usage(arg_required_else_help)]
 pub struct Config {
-    #[command(subcommand)]
-    command: Option<WorkflowCommand>,
+    #[usage(subcommand)]
+    command: WorkflowCommand,
 }
 
 impl Config {
@@ -52,13 +54,13 @@ impl Config {
     #[must_use]
     pub const fn for_run(args: RunArgs) -> Self {
         Self {
-            command: Some(WorkflowCommand::Run(args)),
+            command: WorkflowCommand::Run(args),
         }
     }
 }
 
 /// The individual `workflow` subcommands.
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommands)]
 enum WorkflowCommand {
     /// Runs a workflow by registry name or by path.
     Run(RunArgs),
@@ -84,7 +86,7 @@ enum WorkflowCommand {
 #[derive(Args, Debug)]
 pub struct ProtocolArgs {
     /// Prints the Rhai authoring reference instead of the execution protocol.
-    #[arg(long)]
+    #[usage(long)]
     authoring: bool,
 }
 
@@ -92,16 +94,16 @@ pub struct ProtocolArgs {
 #[derive(Args, Debug)]
 pub struct InitArgs {
     /// Restricts installation to a single agent instead of every supported one.
-    #[arg(long, value_enum, value_name = "AGENT")]
+    #[usage(long, value_enum, value_name = "AGENT")]
     agent: Option<bridge::Agent>,
     /// Installs into the home directory (the default).
-    #[arg(long, conflicts_with = "project")]
+    #[usage(long, conflicts("--project"))]
     user: bool,
     /// Installs into the current repository instead of the home directory.
-    #[arg(long, conflicts_with = "user")]
+    #[usage(long, conflicts("--user"))]
     project: bool,
     /// Overwrites existing skill files.
-    #[arg(long)]
+    #[usage(long)]
     force: bool,
 }
 
@@ -109,30 +111,30 @@ pub struct InitArgs {
 #[derive(Args, Debug)]
 struct CreateArgs {
     /// Name for the created workflow.
-    #[arg(value_name = "NAME")]
+    #[usage(value_name = "NAME")]
     name: String,
     /// Writes to the project store (the default).
-    #[arg(long, conflicts_with = "user")]
+    #[usage(long, conflicts("--user"))]
     project: bool,
     /// Writes to the user store instead of the project store.
-    #[arg(long, conflicts_with = "project")]
+    #[usage(long, conflicts("--project"))]
     user: bool,
     /// Copies an official bundled workflow as the scaffold.
-    #[arg(long, value_name = "BUNDLED_NAME")]
+    #[usage(long, value_name = "BUNDLED_NAME")]
     from: Option<String>,
     /// Replaces an existing workflow file.
-    #[arg(long)]
+    #[usage(long)]
     force: bool,
 }
 
 /// Arguments accepted by `workflow bridge`.
 #[derive(Args, Debug)]
 struct BridgeArgs {
-    #[command(subcommand)]
+    #[usage(subcommand)]
     command: BridgeCommand,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommands)]
 enum BridgeCommand {
     /// Installs one dispatcher command file.
     Install(BridgeInstallArgs),
@@ -144,23 +146,23 @@ enum BridgeCommand {
 #[derive(Args, Debug)]
 struct BridgeTargetArgs {
     /// Agent whose command directory receives the dispatcher.
-    #[arg(long, value_enum)]
+    #[usage(long, value_enum)]
     agent: bridge::Agent,
     /// Uses the agent's user-global command directory (the default).
-    #[arg(long, conflicts_with = "project")]
+    #[usage(long, conflicts("--project"))]
     global: bool,
     /// Uses the current repository's project command directory.
-    #[arg(long, conflicts_with = "global")]
+    #[usage(long, conflicts("--global"))]
     project: bool,
 }
 
 /// Bridge installation options.
 #[derive(Args, Debug)]
 struct BridgeInstallArgs {
-    #[command(flatten)]
+    #[usage(flatten)]
     target: BridgeTargetArgs,
     /// Replaces an existing dispatcher file.
-    #[arg(long)]
+    #[usage(long)]
     force: bool,
 }
 
@@ -168,22 +170,27 @@ struct BridgeInstallArgs {
 #[derive(Args, Debug)]
 pub struct RunArgs {
     /// Registry name or local script path; path mode may access files outside `.ren/workflows`.
-    #[arg(value_name = "NAME_OR_PATH")]
+    #[usage(value_name = "NAME_OR_PATH")]
     pub target: String,
     /// JSON value exposed to the workflow as `args`.
-    #[arg(long, value_name = "JSON")]
+    #[usage(long, value_name = "JSON")]
     pub args: Option<String>,
     /// Maximum number of agent slots available to the run.
-    #[arg(long, default_value_t = 128, value_parser = clap::value_parser!(u16).range(1..=1024))]
+    #[usage(
+        long,
+        default = "128",
+        validate = "int(value) >= 1 && int(value) <= 1024",
+        validate_error = "must be between 1 and 1024"
+    )]
     pub agent_budget: u16,
     /// Path to atomically checkpoint the journal after every committed effect.
-    #[arg(long, value_name = "OUT")]
+    #[usage(long, value_name = "OUT")]
     pub journal: Option<PathBuf>,
     /// Journal to replay; successful calls are skipped and this file is updated unless --journal is set.
-    #[arg(long, value_name = "IN")]
+    #[usage(long, value_name = "IN")]
     pub resume: Option<PathBuf>,
     /// Rewinds the first failed or cancelled invocation before resuming.
-    #[arg(long, requires = "resume")]
+    #[usage(long, requires("--resume"))]
     pub retry_failed: bool,
 }
 
@@ -191,7 +198,7 @@ pub struct RunArgs {
 #[derive(Args, Debug)]
 pub struct NameArgs {
     /// Registry name of the workflow.
-    #[arg(value_name = "NAME")]
+    #[usage(value_name = "NAME")]
     pub name: String,
 }
 
@@ -224,20 +231,15 @@ where
 /// subcommand fails.
 pub fn run(config: Config) -> Result<(), WorkflowError> {
     match config.command {
-        Some(WorkflowCommand::Run(args)) => run_workflow(&args),
-        Some(WorkflowCommand::List) => list_workflows(),
-        Some(WorkflowCommand::Show(args)) => show_workflow(&args.name),
-        Some(WorkflowCommand::Schema(args)) => schema_workflow(&args.name),
-        Some(WorkflowCommand::Create(args)) => create_workflow(&args),
-        Some(WorkflowCommand::Remove(args)) => remove_workflow(&args.name),
-        Some(WorkflowCommand::Init(args)) => run_init(&args),
-        Some(WorkflowCommand::Protocol(args)) => run_protocol(&args),
-        Some(WorkflowCommand::Bridge(args)) => run_bridge(&args),
-        None => Err(WorkflowError::InvalidConfig(
-            "a workflow subcommand is required (run, list, show, schema, create, remove, init, \
-             protocol, bridge)"
-                .into(),
-        )),
+        WorkflowCommand::Run(args) => run_workflow(&args),
+        WorkflowCommand::List => list_workflows(),
+        WorkflowCommand::Show(args) => show_workflow(&args.name),
+        WorkflowCommand::Schema(args) => schema_workflow(&args.name),
+        WorkflowCommand::Create(args) => create_workflow(&args),
+        WorkflowCommand::Remove(args) => remove_workflow(&args.name),
+        WorkflowCommand::Init(args) => run_init(&args),
+        WorkflowCommand::Protocol(args) => run_protocol(&args),
+        WorkflowCommand::Bridge(args) => run_bridge(&args),
     }
 }
 
@@ -481,7 +483,7 @@ fn remove_workflow(name: &str) -> Result<(), WorkflowError> {
 }
 
 const fn bridge_scope(target: &BridgeTargetArgs) -> bridge::BridgeScope {
-    // clap rejects `--global --project`; neither flag means the global default.
+    // usage rejects `--global --project`; neither flag means the global default.
     if target.project {
         bridge::BridgeScope::Project
     } else {

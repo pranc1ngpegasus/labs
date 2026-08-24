@@ -4,12 +4,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use clap::Parser;
 use koe_core::{
     AudioSourceConfig, TranscriptFormat, TranscriptMeta, TranscriptionCallback,
     TranscriptionSegment, create_formatter, default_transcript_path, feed_transcription_audio,
     finalize_transcription, start_transcription,
 };
+use usage::Args;
 
 use super::Run;
 use super::decode::{CANONICAL_SAMPLE_RATE_HZ, DecodedAudioInfo, chunk_pcm, decode_to_canonical};
@@ -23,21 +23,21 @@ use crate::config::KoeConfig;
 const RECOGNITION_WINDOW_MS: u64 = 50_000;
 
 /// Transcribe an existing audio file without recording.
-#[derive(Debug, Parser)]
+#[derive(Debug, Args)]
 pub struct TranscribeArgs {
     /// Input audio file (WAV / FLAC / OGG / MP3 / AAC / AIFF).
     pub input: PathBuf,
 
     /// Speech recognition locale (BCP-47).
-    #[arg(long)]
+    #[usage(long)]
     pub locale: Option<String>,
 
     /// Transcript output path (default: `<input>.<format>`).
-    #[arg(short = 'o', long)]
+    #[usage(short = 'o', long)]
     pub output: Option<PathBuf>,
 
     /// Transcript format: `txt`, `srt`, `vtt`, or `json`.
-    #[arg(long)]
+    #[usage(long)]
     pub format: Option<String>,
 
     /// Speech engine: `auto` (default), `on-device`, or `network`.
@@ -45,15 +45,15 @@ pub struct TranscribeArgs {
     /// `on-device` never sends audio to Apple; it errors if unavailable.
     /// `network` always uses Apple's servers. `auto` prefers on-device and
     /// falls back to network with a warning.
-    #[arg(long)]
+    #[usage(long)]
     pub engine: Option<String>,
 
     /// Start transcribing from this offset (e.g. `30s`, `1m30s`).
-    #[arg(long)]
+    #[usage(long)]
     pub start_at: Option<String>,
 
     /// Stop transcribing at this offset (same syntax as `--start-at`).
-    #[arg(long)]
+    #[usage(long)]
     pub end_at: Option<String>,
 }
 
@@ -373,11 +373,36 @@ impl TranscriptionCallback for SegmentCollector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
+    use std::ffi::OsStr;
+
+    use usage::{Cli, Subcommands};
+
+    #[derive(Cli)]
+    #[usage(bin = "koe")]
+    struct TestCli {
+        #[usage(subcommand)]
+        command: TestCommand,
+    }
+
+    #[derive(Subcommands)]
+    enum TestCommand {
+        Transcribe(TranscribeArgs),
+    }
+
+    fn parse_transcribe(args: &[&str]) -> TranscribeArgs {
+        let cli_argv: Vec<&OsStr> = ["koe", "transcribe"]
+            .into_iter()
+            .chain(args.iter().copied())
+            .map(OsStr::new)
+            .collect();
+        match TestCli::try_parse_from(&cli_argv).expect("parse").command {
+            TestCommand::Transcribe(transcribe) => transcribe,
+        }
+    }
 
     #[test]
     fn parses_required_input() {
-        let args = TranscribeArgs::try_parse_from(["transcribe", "meeting.wav"]).expect("parse");
+        let args = parse_transcribe(&["meeting.wav"]);
         assert_eq!(args.input, PathBuf::from("meeting.wav"));
         assert!(args.locale.is_none());
         assert!(args.format.is_none());
@@ -386,8 +411,7 @@ mod tests {
 
     #[test]
     fn parses_all_flags() {
-        let args = TranscribeArgs::try_parse_from([
-            "transcribe",
+        let args = parse_transcribe(&[
             "--locale",
             "ja-JP",
             "--format",
@@ -401,8 +425,7 @@ mod tests {
             "--end-at",
             "2m",
             "in.flac",
-        ])
-        .expect("parse");
+        ]);
         assert_eq!(args.input, PathBuf::from("in.flac"));
         assert_eq!(args.locale.as_deref(), Some("ja-JP"));
         assert_eq!(args.format.as_deref(), Some("srt"));
@@ -420,11 +443,7 @@ mod tests {
 
     #[test]
     fn prepare_rejects_missing_input() {
-        let args = TranscribeArgs::try_parse_from([
-            "transcribe",
-            "/tmp/koe-definitely-missing-input-xyz.wav",
-        ])
-        .expect("parse");
+        let args = parse_transcribe(&["/tmp/koe-definitely-missing-input-xyz.wav"]);
         let err = prepare(&args, &KoeConfig::default()).expect_err("missing");
         assert!(matches!(err, MainError::Io(_)));
     }
@@ -434,15 +453,13 @@ mod tests {
         let mut path = std::env::temp_dir();
         path.push(format!("koe-transcribe-prepare-{}.wav", std::process::id()));
         std::fs::write(&path, b"RIFF").unwrap();
-        let args = TranscribeArgs::try_parse_from([
-            "transcribe",
+        let args = parse_transcribe(&[
             "--start-at",
             "2m",
             "--end-at",
             "30s",
             path.to_str().unwrap(),
-        ])
-        .expect("parse");
+        ]);
         let err = prepare(&args, &KoeConfig::default()).expect_err("inverted");
         let _ = std::fs::remove_file(&path);
         assert!(matches!(err, MainError::InvalidArgs(_)));
@@ -453,8 +470,7 @@ mod tests {
         let mut path = std::env::temp_dir();
         path.push(format!("koe-transcribe-config-{}.wav", std::process::id()));
         std::fs::write(&path, b"RIFF").unwrap();
-        let args =
-            TranscribeArgs::try_parse_from(["transcribe", path.to_str().unwrap()]).expect("parse");
+        let args = parse_transcribe(&[path.to_str().unwrap()]);
         let config = crate::config::parse_toml(
             r#"
 [transcription]

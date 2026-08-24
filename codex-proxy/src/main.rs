@@ -5,51 +5,48 @@ use std::process::ExitCode;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use clap::Parser;
 use tokio::net::TcpListener;
+use usage::Cli;
 
-use codex_proxy::auth::{Auth, DEFAULT_TOKEN_URL};
+use codex_proxy::auth::Auth;
 use codex_proxy::error::AuthError;
 use codex_proxy::proxy;
 
-/// 既定の ChatGPT/WHAM バックエンド基底。
-const DEFAULT_BACKEND: &str = "https://chatgpt.com/backend-api/wham";
-/// auto で解決する既定 auth ファイルのサブパス。
 const DEFAULT_AUTH_REL: &str = ".codex/auth.json";
 
-#[derive(Debug, Parser)]
-#[command(
-    name = "codex-proxy",
+#[derive(Debug, Cli)]
+#[usage(
+    bin = "codex-proxy",
     version,
     about = "常駐 OAuth プロキシ: Codex の ChatGPT トークンを自動更新し、OpenAI-compatible な /v1 をローカルに expose する"
 )]
-struct Cli {
+struct CliRoot {
     /// バインドするホスト。
-    #[arg(long, default_value = "127.0.0.1")]
+    #[usage(long, default = "127.0.0.1")]
     host: String,
 
     /// バインドするポート。
-    #[arg(long, default_value_t = 8080)]
+    #[usage(long, default = "8080")]
     port: u16,
 
     /// Codex の auth.json のパス。未指定なら $HOME/.codex/auth.json。
-    #[arg(long)]
+    #[usage(long)]
     auth_file: Option<PathBuf>,
 
     /// OAuth トークンエンドポイント。
-    #[arg(long, default_value = DEFAULT_TOKEN_URL)]
+    #[usage(long, default = "https://auth.openai.com/oauth/token")]
     token_url: String,
 
     /// `ChatGPT` バックエンドの基底 URL。
-    #[arg(long, default_value = DEFAULT_BACKEND)]
+    #[usage(long, default = "https://chatgpt.com/backend-api/wham")]
     backend: String,
 
     /// クライアント API キー。未指定なら `CODEX_PROXY_API_KEY` を参照し、それも未指定なら起動時に生成する。
-    #[arg(long, env = "CODEX_PROXY_API_KEY")]
+    #[usage(long, env = "CODEX_PROXY_API_KEY")]
     api_key: Option<String>,
 }
 
-fn resolve_auth_file(cli: &Cli) -> PathBuf {
+fn resolve_auth_file(cli: &CliRoot) -> PathBuf {
     cli.auth_file.clone().unwrap_or_else(|| {
         home_dir()
             .map_or_else(|| PathBuf::from("."), PathBuf::from)
@@ -73,7 +70,7 @@ async fn main() -> ExitCode {
 }
 
 async fn run() -> Result<ExitCode, String> {
-    let cli = Cli::parse();
+    let cli = CliRoot::parse();
     let auth_file = resolve_auth_file(&cli);
     let backend = cli.backend.trim_end_matches('/').to_owned();
 

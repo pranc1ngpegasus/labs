@@ -1,19 +1,20 @@
-use clap::{Parser, Subcommand};
 use std::process::ExitCode;
 use thiserror::Error;
+use usage::{Cli, Subcommands};
 
-#[derive(Debug, Parser)]
-#[clap(
-    name = env!("CARGO_PKG_NAME"),
-    version = env!("CARGO_PKG_VERSION"),
-    arg_required_else_help = true,
+#[derive(Debug, Cli)]
+#[usage(
+    bin = env!("CARGO_PKG_NAME"),
+    bin_spec = "ren",
+    version,
+    arg_required_else_help,
 )]
-struct Cli {
-    #[command(subcommand)]
+struct CliRoot {
+    #[usage(subcommand)]
     command: Command,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommands)]
 enum Command {
     Workflow(ren_workflow::Config),
     /// Captures, indexes, and queries local Markdown knowledge.
@@ -23,7 +24,7 @@ enum Command {
 }
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    let cli = CliRoot::parse();
 
     let result = match cli.command {
         Command::Workflow(config) => ren_workflow::run(config).map_err(CommandError::from),

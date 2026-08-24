@@ -2,22 +2,22 @@
 
 use std::fmt::Write as _;
 
-use clap::Parser;
 use koe_core::{Permission, PermissionStatus, check_permission, native_provider_registered};
 use serde_json::{Value, json};
+use usage::Args;
 
 use super::Run;
 use crate::MainError;
 
 /// Check and diagnose macOS permissions required by Koe.
-#[derive(Debug, Parser)]
+#[derive(Debug, Args)]
 pub struct PermissionsArgs {
     /// Output as JSON.
-    #[arg(long)]
+    #[usage(long)]
     json: bool,
 
     /// Exit non-zero if any permission is not Authorized.
-    #[arg(long)]
+    #[usage(long)]
     check: bool,
 }
 

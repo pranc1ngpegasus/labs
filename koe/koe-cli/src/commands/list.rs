@@ -1,7 +1,7 @@
 //! `koe list` — enumerate capture-able apps.
 
-use clap::Parser;
 use koe_core::{enumerate_apps, native_provider_registered};
+use usage::Args;
 
 use super::Run;
 use super::apps_table::{format_apps_json, format_apps_table, prepare_apps};
@@ -12,14 +12,14 @@ use crate::MainError;
 /// Device enumeration is intentionally out of scope: the CLI surface for
 /// `koe list` only exposes app rows (`--audio-only` / `--json`). Default
 /// devices belong on `koe info` (task 27).
-#[derive(Debug, Parser)]
+#[derive(Debug, Args)]
 pub struct ListArgs {
     /// Only show apps with active audio.
-    #[arg(long)]
+    #[usage(long)]
     audio_only: bool,
 
     /// Output as a JSON array.
-    #[arg(long)]
+    #[usage(long)]
     json: bool,
 }
 

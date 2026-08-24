@@ -15,8 +15,8 @@ pub const SCHEMA: &str = "ren-memory/v1";
 pub const MAX_FRONTMATTER_BYTES: usize = 1024 * 1024;
 pub const MAX_NOTE_BYTES: usize = 4 * 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, clap::ValueEnum)]
-#[value(rename_all = "snake_case")]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, usage::ValueEnum)]
+#[usage(rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum NoteType {
     Fleeting,
@@ -65,8 +65,8 @@ impl FromStr for NoteType {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, clap::ValueEnum)]
-#[value(rename_all = "snake_case")]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, usage::ValueEnum)]
+#[usage(rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum NoteState {
     Inbox,
@@ -112,8 +112,8 @@ impl FromStr for NoteState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, clap::ValueEnum)]
-#[value(rename_all = "snake_case")]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, usage::ValueEnum)]
+#[usage(rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum Relation {
     Supports,

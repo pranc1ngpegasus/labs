@@ -1068,21 +1068,28 @@ fn promotion_uses_raw_revisions_and_deduplicates_selected_ids() -> crate::error:
 
 #[test]
 fn promote_apply_operation_parses_without_positional_ids() {
-    use clap::{Parser, Subcommand};
+    use std::ffi::OsStr;
+    use usage::{Cli, Subcommands};
 
-    #[derive(Debug, Parser)]
+    #[derive(Debug, Cli)]
     struct TestCli {
-        #[command(subcommand)]
+        #[usage(subcommand)]
         command: TestCommand,
     }
 
-    #[derive(Debug, Subcommand)]
+    #[derive(Debug, Subcommands)]
     enum TestCommand {
         Memory(crate::Config),
     }
 
-    let parsed =
-        TestCli::try_parse_from(["ren", "memory", "promote", "--apply", "--operation", "abc"]);
+    let parsed = TestCli::try_parse_from(&[
+        OsStr::new("ren"),
+        OsStr::new("memory"),
+        OsStr::new("promote"),
+        OsStr::new("--apply"),
+        OsStr::new("--operation"),
+        OsStr::new("abc"),
+    ]);
     assert!(parsed.is_ok());
 }
 
