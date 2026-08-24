@@ -1,0 +1,13 @@
+[package]
+name = "oto-core"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+oto-capture = { workspace = true }
+oto-encode = { workspace = true }
+thiserror = { workspace = true }
+workspace-hack = { workspace = true }
+
+[lints]
+workspace = true
