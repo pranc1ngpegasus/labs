@@ -2584,7 +2584,9 @@ dependencies = [
 name = "oto-capture"
 version = "0.0.0"
 dependencies = [
+ "serde",
  "shiguredo_audio_device",
+ "thiserror 2.0.20",
  "workspace-hack",
 ]
 
@@ -2593,6 +2595,9 @@ name = "oto-cli"
 version = "0.0.0"
 dependencies = [
  "oto-core",
+ "serde_json",
+ "thiserror 2.0.20",
+ "usage-rs",
  "workspace-hack",
 ]
 
