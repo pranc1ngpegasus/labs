@@ -160,8 +160,8 @@ enum MainError {
 
 | 項目 | 既定値 |
 |---|---|
-| 出力ファイル | `oto-YYYYmmdd-HHMMSS.wav`(カレントディレクトリ、`jiff` で生成) |
-| 形式 | 拡張子で判定(`.ogg`/`.opus` → Opus、それ以外 → WAV)。`--format` で上書き |
+| 出力ファイル | `oto-YYYYmmdd-HHMMSS.ogg`(カレントディレクトリ、`jiff` で生成) |
+| 形式 | 拡張子で判定(`.wav` → WAV、`.ogg`/`.opus` → Opus、それ以外 → Opus 既定)。`--format` で上書き |
 | デバイス | デフォルト入力デバイス(`device_id: None`) |
 | チャンネル | 1(モノラル要求)※実デバイスが返す値に従う |
 | サンプルレート | 48 kHz 要求 ※実際の値は `capture.sample_rate()` を利用 |

@@ -9,6 +9,37 @@ use std::io;
 
 use thiserror::Error;
 
+pub mod convert;
+pub mod ogg_opus;
+pub mod wav;
+
+pub use convert::{ConvertError, Converter};
+pub use ogg_opus::{OggOpusEncoder, Tags};
+pub use wav::WavEncoder;
+
+/// PCM sample format delivered by the capture device.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PcmFormat {
+    /// Signed 16-bit little-endian samples.
+    S16,
+    /// IEEE 32-bit float samples in `[-1, 1]`.
+    F32,
+}
+
+/// A captured audio chunk, decoupled from the capture crate so the encoder
+/// layer stays platform-agnostic (design 02).
+#[derive(Debug, Clone, Copy)]
+pub struct AudioChunk<'a> {
+    /// Raw interleaved PCM bytes in `format`.
+    pub data: &'a [u8],
+    /// Sample format of `data`.
+    pub format: PcmFormat,
+    /// Sample rate in hertz (the device's actual rate).
+    pub sample_rate: u32,
+    /// Channel count.
+    pub channels: u8,
+}
+
 /// Encoder input constraints (the actual capture rate and channel count,
 /// which may differ from the configured values on some backends).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,26 +75,32 @@ pub enum Error {
     /// The underlying codec rejected a frame.
     #[error("codec error: {0}")]
     Codec(String),
+    /// Sample conversion failed before reaching the encoder.
+    #[error("conversion error: {0}")]
+    Convert(#[from] ConvertError),
 }
 
-/// Encodes interleaved i16 PCM into an audio container.
+/// Encodes captured audio into an output container.
 ///
-/// Implementations are owned by a single consumer thread. [`Self::write_pcm`]
-/// accepts arbitrary chunk boundaries; the WAV writer appends as-is, while the
-/// Opus writer buffers to exactly one encoder frame per packet.
+/// Implementations are owned by a single consumer thread. [`Self::write`]
+/// accepts one captured chunk; the WAV writer appends the raw (format-preserving)
+/// bytes as-is, while the Opus writer consumes the caller-converted interleaved
+/// i16 samples passed in `converted` and buffers to exactly one encoder frame
+/// per packet. `converted` is `None` for the WAV path, which does no conversion.
 pub trait AudioEncoder: Send {
-    /// Returns the encoder's input constraints.
+    /// Returns the encoder's output constraints.
     fn spec(&self) -> EncoderSpec;
 
-    /// Writes interleaved i16 PCM samples.
+    /// Writes one captured chunk.
     ///
     /// # Errors
     ///
     /// Returns [`Error`] when encoding or writing fails. The writer is left in
     /// an unspecified state after an error.
-    fn write_pcm(
+    fn write(
         &mut self,
-        pcm: &[i16],
+        chunk: &AudioChunk<'_>,
+        converted: Option<&[i16]>,
     ) -> Result<(), Error>;
 
     /// Flushes remaining buffered audio and finalizes the container

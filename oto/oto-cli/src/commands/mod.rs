@@ -1,8 +1,10 @@
 //! CLI subcommands.
 
 mod list;
+mod record;
 
 pub use list::ListArgs;
+pub use record::RecordArgs;
 
 use crate::MainError;
 
