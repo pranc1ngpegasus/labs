@@ -275,13 +275,13 @@ engine = "on-device"
         let config = parse_toml(
             r#"
 [defaults]
-format = "flac"
+format = "ogg"
 [aec]
 enabled = false
 "#,
         )
         .expect("parse");
-        assert_eq!(config.defaults.format.as_deref(), Some("flac"));
+        assert_eq!(config.defaults.format.as_deref(), Some("ogg"));
         assert!(config.defaults.source.is_none());
         assert_eq!(config.aec.enabled, Some(false));
         assert!(config.aec.comfort_noise.is_none());
@@ -376,14 +376,14 @@ enabled = false
             r#"
 [defaults]
 source = "mic"
-format = "wav"
+format = "ogg"
 "#,
         )
         .expect("write");
 
         let config = load(Some(&path)).expect("load");
         assert_eq!(config.defaults.source.as_deref(), Some("mic"));
-        assert_eq!(config.defaults.format.as_deref(), Some("wav"));
+        assert_eq!(config.defaults.format.as_deref(), Some("ogg"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

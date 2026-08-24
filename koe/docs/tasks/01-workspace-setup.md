@@ -24,7 +24,7 @@ koe-gui/     — bin: GPUI GUI (feature-gated, off by default)
 1. **Workspace Cargo.toml**
    - Define `[workspace]` with all five members
    - Define workspace-level dependencies where shared (tokio, thiserror, log, etc.)
-   - Feature flags: `aec` (on), `ogg` (on), `system-audio` (on), `screen-audio` (on), `cli` (on), `gui` (off)
+   - Feature flags: `aec` (on), `system-audio` (on), `screen-audio` (on), `cli` (on), `gui` (off)
 
 2. **Crate scaffolding**
    - `koe-core/Cargo.toml` — lib crate; depends on `koe-ffi`

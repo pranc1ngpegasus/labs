@@ -19,8 +19,6 @@ Validate available disk space before starting a recording.
    | Format | 1 hour estimate |
    |--------|----------------|
    | OGG Vorbis (q=0.4) | ~42 MB |
-   | FLAC (level 5) | ~210 MB |
-   | WAV (f32 stereo) | ~2.1 GB |
 
 2. **Check available space** on output volume:
    ```rust

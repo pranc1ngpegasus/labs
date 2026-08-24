@@ -48,7 +48,7 @@ pub struct AppInfo {
 }
 
 #[uniffi::export]
-pub enum OutputFormat { Ogg { quality: f32 }, Wav { bits_per_sample: u16 }, Flac { compression_level: u8 } }
+pub enum OutputFormat { Ogg { quality: f32 } }
 
 #[uniffi::export]
 pub enum TranscriptFormat { Txt, Srt, Vtt, Json }

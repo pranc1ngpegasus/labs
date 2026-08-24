@@ -45,9 +45,6 @@ pub fn enabled_features() -> Vec<&'static str> {
     if cfg!(feature = "gui") {
         features.push("gui");
     }
-    if cfg!(feature = "ogg") {
-        features.push("ogg");
-    }
     if cfg!(feature = "screen-audio") {
         features.push("screen-audio");
     }
@@ -59,14 +56,21 @@ pub fn enabled_features() -> Vec<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
+    /// Asserts the default feature stack; only meaningful when all default
+    /// features are enabled, so it is skipped in reduced-feature builds.
+    #[cfg(all(
+        feature = "aec",
+        feature = "cli",
+        feature = "screen-audio",
+        feature = "system-audio"
+    ))]
     #[test]
     fn default_features_include_cli_stack() {
+        use super::*;
+
         let features = enabled_features();
         assert!(features.contains(&"aec"));
         assert!(features.contains(&"cli"));
-        assert!(features.contains(&"ogg"));
         assert!(features.contains(&"screen-audio"));
         assert!(features.contains(&"system-audio"));
         assert!(!features.contains(&"gui"));

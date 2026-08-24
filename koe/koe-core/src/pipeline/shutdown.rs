@@ -312,11 +312,14 @@ mod tests {
     use crate::codec::{AudioEncoder, CodecError};
     use crate::pipeline::test_support::{install_authorized_mic, test_config, unique_path};
 
-    fn assert_valid_wav(path: &Path) {
-        let bytes = std::fs::read(path).expect("read wav");
-        assert!(bytes.len() >= 56, "WAV too small: {} bytes", bytes.len());
-        assert_eq!(&bytes[0..4], b"RIFF");
-        assert_eq!(&bytes[8..12], b"WAVE");
+    fn assert_valid_ogg(path: &Path) {
+        let bytes = std::fs::read(path).expect("read ogg");
+        assert!(bytes.len() >= 56, "OGG too small: {} bytes", bytes.len());
+        assert_eq!(&bytes[0..4], b"OggS");
+        assert!(
+            String::from_utf8_lossy(&bytes).contains("vorbis"),
+            "expected a Vorbis bitstream"
+        );
     }
 
     #[tokio::test]
@@ -332,13 +335,8 @@ mod tests {
         assert!(started.elapsed() < SHUTDOWN_BUDGET);
         assert!(result.consumer_drained);
         assert!(matches!(pipeline.state(), PipelineState::Stopped));
-        assert!(matches!(
-            result.format,
-            OutputFormat::Wav {
-                bits_per_sample: 16
-            }
-        ));
-        assert_valid_wav(&output);
+        assert!(matches!(result.format, OutputFormat::Ogg { quality: 0.4 }));
+        assert_valid_ogg(&output);
         let _ = std::fs::remove_file(output);
     }
 
@@ -354,7 +352,7 @@ mod tests {
         let summary = pipeline.stop().await.expect("stop");
         assert!(started.elapsed() < SHUTDOWN_BUDGET);
         assert!(matches!(pipeline.state(), PipelineState::Stopped));
-        assert_valid_wav(&output);
+        assert_valid_ogg(&output);
         assert!(summary.bytes_written > 0);
         let _ = std::fs::remove_file(output);
     }
@@ -391,12 +389,12 @@ mod tests {
             expected_frames,
             "all fed frames must be processed before exit"
         );
-        assert_valid_wav(&output);
+        assert_valid_ogg(&output);
         let _ = std::fs::remove_file(output);
     }
 
     #[tokio::test]
-    async fn force_stop_does_not_corrupt_wav() {
+    async fn force_stop_does_not_corrupt_ogg() {
         let _guard = install_authorized_mic().await;
         let output = unique_path("force");
         let mut pipeline = RecordingPipeline::start(test_config(&output))
@@ -413,7 +411,7 @@ mod tests {
         let result = pipeline.force_stop().await.expect("force_stop");
         assert!(started.elapsed() < SHUTDOWN_BUDGET);
         assert!(result.bytes_written > 0);
-        assert_valid_wav(&output);
+        assert_valid_ogg(&output);
         let _ = std::fs::remove_file(output);
     }
 

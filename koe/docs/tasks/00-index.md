@@ -46,15 +46,13 @@ verifiable. Tasks are numbered by logical dependency order.
 | 13 | [FFI Error Types](./13-ffi-error-types.md) | 12 | koe-ffi |
 | 14 | [FFI Callback Interfaces](./14-ffi-callback-interfaces.md) | 12 | koe-ffi |
 
-### Phase 5: Core Library — Pipeline & Processing (15–23)
+### Phase 5: Core Library — Pipeline & Processing (15–17, 20–23)
 
 | # | Task | Depends On | Crates |
 |---|------|-----------|--------|
 | 15 | [Pipeline Core](./15-pipeline-core.md) | 12, 13, 14 | koe-core |
 | 16 | [Consumer Task Loop](./16-consumer-task-loop.md) | 15 | koe-core |
 | 17 | [AudioEncoder Trait & OGG](./17-audio-encoder-trait-and-ogg.md) | 15 | koe-core |
-| 18 | [WAV Encoder](./18-wav-encoder.md) | 17 | koe-core |
-| 19 | [FLAC Encoder](./19-flac-encoder.md) | 17 | koe-core |
 | 20 | [Transcript Formatter](./20-transcript-formatter.md) | 15 | koe-core |
 | 21 | [Echo Cancellation (AEC)](./21-echo-cancellation.md) | 15 | koe-core |
 | 22 | [Shutdown Sequence](./22-shutdown-sequence.md) | 15, 16 | koe-core |
@@ -133,8 +131,6 @@ graph TD
         15[15-pipeline-core]
         16[16-consumer-task-loop]
         17[17-audio-encoder-trait-and-ogg]
-        18[18-wav-encoder]
-        19[19-flac-encoder]
         20[20-transcript-formatter]
         21[21-echo-cancellation]
         22[22-shutdown-sequence]
@@ -187,7 +183,6 @@ graph TD
     12 --> 13 & 14
     12 & 13 & 14 --> 15
     15 --> 16 & 17 & 20 & 21 & 22 & 23 & 42 & 43 & 44
-    17 --> 18 & 19
     15 & 17 & 20 & 21 --> 24
     06 & 12 --> 25
     10 & 20 --> 26
