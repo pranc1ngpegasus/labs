@@ -1,8 +1,9 @@
 # labs
 
 A collection of personal open-source projects and experiments. It is a
-Rust workspace + Nix flake monorepo that currently houses three projects:
-**`koe`**, **`ren`**, and **`sui`**.
+Rust workspace + Nix flake monorepo that currently houses four projects:
+**`koe`**, **`ren`**, **`sui`**, and **`oto`** — plus the resident
+**`codex-proxy`** daemon.
 
 ## Projects
 
@@ -26,6 +27,26 @@ The design spec (`docs/spec/`) and implementation task breakdown (`docs/tasks/`)
 live in [koe/docs](./koe/docs).
 
 **Crate layout:** `koe-core` (pipeline, AEC, codecs, shared state) → `koe-ffi` (uniffi-generated bindings) → `koe-native` (Swift package) + `koe-cli` (CLI binary)
+
+### [oto](./oto) — 音 (sound)
+
+A cross-platform **offline microphone recorder**. Captures the default (or a
+selected) input device and writes **WAV** (lossless, source-preserving) or
+**Ogg/Opus** (compressed, RFC 7845) to a local file.
+
+- Capture and device enumeration via shiguredo/audio-device-rs (CoreAudio / PulseAudio / WASAPI)
+- Opus encoding via shiguredo/opus-rs, with the Ogg container assembled in pure Rust
+- Offline-first: recording never touches the network
+
+```console
+oto list                       # enumerate input devices
+oto record memo.ogg            # Ogg/Opus (the default), Ctrl-C or --duration to stop
+oto record backup.wav          # WAV, source format preserved
+```
+
+The design spec (`docs/spec/`, Japanese) lives in [oto/docs](./oto/docs).
+
+**Crate layout:** `oto-capture` (device + capture) / `oto-encode` (conversion + WAV / Ogg+Opus encoders) / `oto-core` (recording pipeline) / `oto-cli` (binary)
 
 ### [ren](./ren) — 蓮・連・錬 (lotus · connection · refinement)
 
@@ -106,6 +127,7 @@ api_mode = "responses"
 | --- | --- |
 | `codex-proxy/` | Codex OAuth proxy — auto-refreshing OpenAI-compatible `/v1` daemon |
 | `koe/` | Koe (声) — offline recording & transcription for macOS |
+| `oto/` | Oto (音) — cross-platform offline microphone recorder (WAV / Ogg+Opus) |
 | `ren/` | Ren (蓮・連・錬) — workflow + memory foundation |
 | `sui/` | Sui (粋・推・遂) — coding-agent TUI |
 | `Cargo.toml` | Cargo workspace definition and shared dependencies |
@@ -137,7 +159,7 @@ The Rust toolchain (latest stable via `rust-overlay`) is provided by the flake.
 | Lint | `cargo clippy --workspace --all-targets -- -D warnings` |
 | Format | `cargo fmt --all` |
 | Full Nix check (same as CI) | `nix flake check` |
-| Build a package | `nix build .#codex-proxy` / `.#koe` / `.#ren` / `.#sui` |
+| Build a package | `nix build .#codex-proxy` / `.#koe` / `.#oto` / `.#ren` / `.#sui` |
 
 ## Design Principles
 
