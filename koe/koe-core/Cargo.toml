@@ -28,6 +28,7 @@ tokio = { workspace = true, features = [
   "time",
 ] }
 vorbis_rs = { workspace = true, optional = true }
+workspace-hack.workspace = true
 
 [lints]
 workspace = true

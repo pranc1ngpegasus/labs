@@ -32,6 +32,7 @@ tokio = { workspace = true, features = [
   "signal",
 ] }
 usage.workspace = true
+workspace-hack.workspace = true
 
 [dev-dependencies]
 tempfile = "3.20.0"

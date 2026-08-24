@@ -16,6 +16,7 @@ thiserror.workspace = true
 toml_edit = { workspace = true, features = ["serde"] }
 ulid.workspace = true
 usage.workspace = true
+workspace-hack.workspace = true
 yaml_serde.workspace = true
 
 [dev-dependencies]

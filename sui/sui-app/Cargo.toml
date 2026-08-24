@@ -16,6 +16,7 @@ sui-theme = { workspace = true }
 sui-tools = { workspace = true }
 sui-widget = { workspace = true }
 tokio = { workspace = true, features = ["rt", "time"] }
+workspace-hack.workspace = true
 
 [dev-dependencies]
 serde_json = { workspace = true }
