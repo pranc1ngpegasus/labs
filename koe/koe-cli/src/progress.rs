@@ -18,7 +18,7 @@ const SPINNER_FRAMES: &[char] = &['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯
 /// Static labels painted beside dynamic status (format + capture source).
 #[derive(Debug, Clone)]
 pub struct ProgressMeta {
-    /// e.g. `FLAC 48kHz stereo`
+    /// e.g. `OGG 48kHz stereo`
     pub format_label: String,
     /// e.g. `App: Google Chrome (PID 4201)` or `Mic`
     pub source_label: String,
@@ -317,8 +317,6 @@ const fn state_verb(state: RecordingState) -> &'static str {
 fn format_label(format: &OutputFormat) -> String {
     let name = match format {
         OutputFormat::Ogg { .. } => "OGG",
-        OutputFormat::Wav { .. } => "WAV",
-        OutputFormat::Flac { .. } => "FLAC",
     };
     format!("{name} 48kHz stereo")
 }
@@ -450,10 +448,10 @@ mod tests {
 
     fn sample_meta() -> ProgressMeta {
         ProgressMeta {
-            format_label: "FLAC 48kHz stereo".into(),
+            format_label: "OGG 48kHz stereo".into(),
             source_label: "Mic".into(),
             source_tag: "[MIC]",
-            output_path: PathBuf::from("out.flac"),
+            output_path: PathBuf::from("out.ogg"),
             transcript_path: Some(PathBuf::from("out.txt")),
         }
     }
@@ -496,20 +494,8 @@ mod tests {
     #[test]
     fn format_label_names_containers() {
         assert_eq!(
-            format_label(&OutputFormat::Flac {
-                compression_level: 5
-            }),
-            "FLAC 48kHz stereo"
-        );
-        assert_eq!(
             format_label(&OutputFormat::Ogg { quality: 0.5 }),
             "OGG 48kHz stereo"
-        );
-        assert_eq!(
-            format_label(&OutputFormat::Wav {
-                bits_per_sample: 16
-            }),
-            "WAV 48kHz stereo"
         );
     }
 

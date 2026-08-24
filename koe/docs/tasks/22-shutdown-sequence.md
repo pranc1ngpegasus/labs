@@ -23,7 +23,7 @@ User Stop / Ctrl-C
   → Drain ring buffer (process remaining frames)
   → Finalize speech analyzer (SFSpeechAnalyzer.finalize())
     → Flush any partial segments as final
-  → Finalize encoder (write OGG trailer / WAV header / FLAC footer)
+  → Finalize encoder (write OGG trailer)
   → Flush file writes
   → Finalize transcript formatter
   → Write transcript file

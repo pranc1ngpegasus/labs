@@ -28,7 +28,6 @@ codewandler-markdown-ratatui = "0.2.1"
 color-eyre = "0.6.5"
 crossterm = "0.29.0"
 dispatch2 = "0.3.1"
-flacenc = { version = "0.5.1", default-features = false }
 fs2 = "0.4.3"
 futures = "0.3.34"
 getrandom = "0.2.17"

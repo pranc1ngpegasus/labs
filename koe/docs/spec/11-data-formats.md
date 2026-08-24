@@ -10,17 +10,15 @@ depends: [01-architecture]
 
 ## Audio Output Formats
 
-Three output formats, selected via `--format <FORMAT>`:
+One output format, selected via `--format <FORMAT>`:
 
 | Format | Extension | Compression | Container | Metadata Support |
 |--------|-----------|-------------|-----------|-----------------|
 | **OGG** (default) | `.ogg` | Lossy (~8–12% of raw PCM) | OGG container | Vorbis Comment |
-| **WAV** | `.wav` | None (raw PCM) | RIFF/WAVE | RIFF INFO chunks |
-| **FLAC** | `.flac` | Lossless (~50–60% of raw PCM) | Native FLAC | Vorbis Comment |
 
 ### Canonical PCM Specification
 
-All encoders receive the same input:
+The encoder receives the same input:
 
 | Property | Value |
 |----------|-------|
@@ -29,8 +27,7 @@ All encoders receive the same input:
 | Channels | 2 (stereo, interleaved L/R) |
 | Byte order | Native endian (little-endian on Apple Silicon) |
 
-Encoders handle conversion to their target format (OGG → f32 passthrough to
-Vorbis encoder, FLAC → i24, WAV → user-configured bit depth).
+The OGG encoder consumes `f32` samples directly (no conversion).
 
 ### OGG Vorbis Details (Default)
 
@@ -68,43 +65,6 @@ flowchart LR
 | `ENCODER` | `koe v{version}` |
 | `KOE_SOURCE` | JSON of `AudioSourceConfig` |
 
-### WAV Details
-
-WAV is available as a lossless fallback. It writes raw PCM with no compression.
-
-```mermaid
-flowchart LR
-    RIFF["RIFF header<br/>'RIFF' + file size"]
-    FMT["fmt  chunk<br/>PCM, 48k/2ch/f32"]
-    FACT["fact chunk<br/>sample count"]
-    DATA["data chunk<br/>raw interleaved PCM f32"]
-
-    RIFF --> FMT --> FACT --> DATA
-```
-
-- **Fact chunk** is always written.
-- **No size limit** in v1 (WAV format's 4 GB limit via RIFF64 not implemented;
-  users recording > ~6 hours at 48 kHz stereo f32 should use OGG or FLAC).
-
-### FLAC Details
-
-FLAC is available as a lossless archival option.
-
-```mermaid
-flowchart LR
-    MAGIC["fLaC magic"]
-    INFO["STREAMINFO"]
-    PAD["PADDING"]
-    VORBIS["VORBIS_COMMENT"]
-    FRAMES["FRAME₀ │ FRAME₁ │ ... │ FRAMEₙ"]
-
-    MAGIC --> INFO --> PAD --> VORBIS --> FRAMES
-```
-
-- **Compression level:** 5 (default; balances speed and ratio)
-- **Block size:** 4096 samples (~85 ms at 48 kHz)
-- **Bits per sample:** 24 (converted from f32; preserves full dynamic range)
-
 ### Encoder Crate
 
 ```mermaid
@@ -112,14 +72,10 @@ graph TD
     CODEC["koe-core/src/codec/"]
     MOD["mod.rs — Codec trait + registry"]
     OGG["ogg.rs — OGG Vorbis encoder (via libvorbis)"]
-    WAV["wav.rs — WAV writer (RIFF header + raw PCM)"]
-    FLAC["flac.rs — FLAC encoder (via libflac)"]
     PL["pipeline.rs — Re-exports"]
 
     CODEC --> MOD
     CODEC --> OGG
-    CODEC --> WAV
-    CODEC --> FLAC
     CODEC --> PL
 ```
 
@@ -127,15 +83,10 @@ graph TD
 pub trait AudioEncoder: Send {
     fn encode(&mut self, pcm: &[f32]) -> Result<Vec<u8>, CodecError>;
     fn finalize(&mut self) -> Result<Vec<u8>, CodecError>;
-    fn format(&self) -> OutputFormat;
-    fn sample_rate(&self) -> u32;
-    fn channel_count(&self) -> u16;
 }
 
 pub enum OutputFormat {
     Ogg { quality: f32 },
-    Wav { bits_per_sample: u16 },
-    Flac { compression_level: u8 },
 }
 ```
 
@@ -252,12 +203,12 @@ When `--output` is a full path, it is used as-is.
 
 ## File Size Estimates
 
-| Duration | OGG Vorbis (q=0.4) | FLAC (lossless) | WAV (f32 stereo) | Transcript (SRT) |
-|----------|---------------------|-----------------|-------------------|-------------------|
-| 10 min | ~7 MB | ~35 MB | ~345 MB | ~20 KB |
-| 30 min | ~21 MB | ~105 MB | ~1.0 GB | ~60 KB |
-| 1 hour | ~42 MB | ~210 MB | ~2.1 GB | ~120 KB |
-| 2 hours | ~84 MB | ~420 MB | ~4.1 GB | ~240 KB |
+| Duration | OGG Vorbis (q=0.4) | Transcript (SRT) |
+|----------|---------------------|-------------------|
+| 10 min | ~7 MB | ~20 KB |
+| 30 min | ~21 MB | ~60 KB |
+| 1 hour | ~42 MB | ~120 KB |
+| 2 hours | ~84 MB | ~240 KB |
 
 **Disk space check:** Before recording starts, Koe checks available disk
 space on the output volume. If free space < estimated size × 2, it warns the

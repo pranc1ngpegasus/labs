@@ -95,7 +95,7 @@ pub struct RecordArgs {
     #[usage(short = 'o', long, required_unless("--list-sources", "--list-locales"))]
     pub output: Option<PathBuf>,
 
-    /// Audio container: `ogg`, `wav`, or `flac`.
+    /// Audio format: `ogg` (the only supported format).
     #[usage(long)]
     pub format: Option<String>,
 
@@ -371,14 +371,8 @@ fn resolve_source(
 fn parse_audio_format(value: &str) -> Result<OutputFormat, MainError> {
     match value.trim().to_ascii_lowercase().as_str() {
         "ogg" => Ok(OutputFormat::Ogg { quality: 0.5 }),
-        "wav" => Ok(OutputFormat::Wav {
-            bits_per_sample: 16,
-        }),
-        "flac" => Ok(OutputFormat::Flac {
-            compression_level: 5,
-        }),
         other => Err(MainError::InvalidArgs(format!(
-            "unknown format '{other}' (expected ogg, wav, or flac)"
+            "unknown format '{other}' (only 'ogg' is supported)"
         ))),
     }
 }
@@ -774,7 +768,7 @@ mod tests {
 
     #[test]
     fn prepare_rejects_noncanonical_rate() {
-        let args = parse_record(&["--source", "mic", "--sample-rate", "44100", "-o", "out.wav"]);
+        let args = parse_record(&["--source", "mic", "--sample-rate", "44100", "-o", "out.ogg"]);
         let err = prepare_session(&args, &KoeConfig::default()).expect_err("rate");
         assert!(matches!(err, MainError::InvalidArgs(_)));
     }
@@ -823,9 +817,9 @@ mod tests {
             "mic",
             "--no-transcribe",
             "-o",
-            "voice.wav",
+            "voice.ogg",
             "--format",
-            "wav",
+            "ogg",
             "--duration",
             "30s",
         ]);
@@ -837,11 +831,11 @@ mod tests {
 
     #[test]
     fn prepare_inherits_config_defaults() {
-        let args = parse_record(&["--source", "mic", "-o", "clip.flac"]);
+        let args = parse_record(&["--source", "mic", "-o", "clip.ogg"]);
         let file = config::parse_toml(
             r#"
 [defaults]
-format = "flac"
+format = "ogg"
 locale = "ja-JP"
 transcript-format = "srt"
 engine = "on-device"
@@ -854,7 +848,7 @@ comfort-noise = false
         let prepared = prepare_session(&args, &file).expect("prepare");
         assert!(matches!(
             prepared.config.audio_format,
-            OutputFormat::Flac { .. }
+            OutputFormat::Ogg { .. }
         ));
         assert_eq!(prepared.config.locale, "ja-JP");
         assert_eq!(
@@ -869,13 +863,13 @@ comfort-noise = false
     #[test]
     fn prepare_cli_overrides_config() {
         let args = parse_record(&[
-            "--source", "mic", "--format", "wav", "--locale", "en-US", "--engine", "network",
-            "--no-aec", "-o", "out.wav",
+            "--source", "mic", "--format", "ogg", "--locale", "en-US", "--engine", "network",
+            "--no-aec", "-o", "out.ogg",
         ]);
         let file = config::parse_toml(
             r#"
 [defaults]
-format = "flac"
+format = "ogg"
 locale = "ja-JP"
 [aec]
 enabled = true
@@ -885,7 +879,7 @@ enabled = true
         let prepared = prepare_session(&args, &file).expect("prepare");
         assert!(matches!(
             prepared.config.audio_format,
-            OutputFormat::Wav { .. }
+            OutputFormat::Ogg { .. }
         ));
         assert_eq!(prepared.config.locale, "en-US");
         assert_eq!(

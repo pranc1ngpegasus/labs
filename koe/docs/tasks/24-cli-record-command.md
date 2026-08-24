@@ -52,7 +52,7 @@ pub struct RecordArgs {
     #[arg(short = 'o', long)]
     pub output: PathBuf,
     #[arg(long, default_value = "ogg")]
-    pub format: String,          // ogg | wav | flac
+    pub format: String,          // ogg
     #[arg(long, default_value = "txt")]
     pub transcript_format: String, // txt | srt | vtt | json
     #[arg(long)]
@@ -113,5 +113,5 @@ pub struct RecordArgs {
 - `koe record --list-sources` → prints apps with audio
 - `koe record --list-locales` → prints supported locales
 - `koe record --source mic --no-transcribe -o test.ogg` → records, no transcription
-- `koe record --source system --app-id com.apple.Safari -o test.flac` → captures system audio
+- `koe record --source system --app-id com.apple.Safari -o test.ogg` → captures system audio
 - Ctrl-C during recording → partial output written, exit code 5

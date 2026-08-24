@@ -228,7 +228,7 @@ mod tests {
         SystemInfo {
             version: "0.0.0".into(),
             host: "aarch64-macos".into(),
-            features: vec!["aec", "cli", "ogg"],
+            features: vec!["aec", "cli", "screen-audio", "system-audio"],
             macos_version: Some("15.5.0".into()),
             disk_check_path: "/Users/test/Movies".into(),
             disk_space_bytes: Some(5 * 1024 * 1024 * 1024),
@@ -263,7 +263,7 @@ mod tests {
         let text = format_info_text(&sample_info());
         assert!(text.contains("0.0.0"));
         assert!(text.contains("Host (arch-os):  aarch64-macos"));
-        assert!(text.contains("aec, cli, ogg"));
+        assert!(text.contains("aec, cli, screen-audio, system-audio"));
         assert!(text.contains("15.5.0"));
         assert!(text.contains("5.0 GiB"));
         assert!(text.contains("/Users/test/Movies"));

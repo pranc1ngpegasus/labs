@@ -138,7 +138,7 @@ label.
 
 ```
 $ koe record --source system --app-id com.google.Chrome
-Recording | ⣾ 00:00:05 | FLAC 48kHz stereo | App: Google Chrome (PID 4201)
+Recording | ⣾ 00:00:05 | OGG 48kHz stereo | App: Google Chrome (PID 4201)
 [SYS] [00:00:05] "This is what I heard so far..."   # partial, overwrites in-place
 [SYS] [00:00:08] "This is the final text."            # final, new line
 [SYS] [00:00:08] "And now a new utterance..."       # next partial

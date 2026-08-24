@@ -64,10 +64,6 @@ recording, and audio tap access.
 through the local speakers. In AEC terms, this is the reference signal that
 must be removed from the microphone.
 
-**FLAC** — Free Lossless Audio Codec. Lossless compressed audio format.
-Available as an archival option in Koe. Compresses PCM audio losslessly
-to ~50–60% of original size.
-
 **OGG Vorbis** — Open, patent-free lossy audio codec in an OGG container.
 Koe's default output format. Provides excellent speech quality at ~8–12%
 of raw PCM size.
@@ -159,7 +155,7 @@ proc-macro variant to generate the Swift↔Rust C ABI. See
 **VAD** — Voice Activity Detection. Identifies speech vs. silence in an audio
 stream. SFSpeechAnalyzer has built-in VAD; Koe does not add a separate one.
 
-**Vorbis Comment** — Metadata block format used by FLAC containers. Koe writes
+**Vorbis Comment** — Metadata block format used in the OGG container. Koe writes
 Vorbis Comments with recording metadata (date, source, app name).
 
 **VTT** — WebVTT (Web Video Text Tracks). A W3C subtitle/caption format. Koe
@@ -177,7 +173,6 @@ supports VTT as a transcript output format.
 | DSP | Digital Signal Processing |
 | ERLE | Echo Return Loss Enhancement |
 | FFI | Foreign Function Interface |
-| FLAC | Free Lossless Audio Codec |
 | OGG | OGG container format (not an acronym) |
 | GPUI | (Not an acronym; Zed's GPU UI framework) |
 | HAL | Hardware Abstraction Layer |

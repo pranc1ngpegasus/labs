@@ -79,12 +79,6 @@ impl OggComments {
             ("KOE_SOURCE", self.koe_source.as_str()),
         ]
     }
-
-    /// Vorbis Comment tag pairs shared with the FLAC encoder.
-    #[must_use]
-    pub const fn tag_pairs(&self) -> [(&str, &str); 6] {
-        self.as_pairs()
-    }
 }
 
 /// Encodes interleaved stereo `f32` PCM into an OGG Vorbis bitstream.

@@ -62,7 +62,7 @@ Transcription Options:
 
 Output Options:
   --output, -o <PATH>            Output file path (required)
-  --format <FORMAT>              Audio format: ogg, wav, flac (default: ogg)
+  --format <FORMAT>              Audio format: ogg
   --transcript-format <FMT>      Transcript format: txt, srt, vtt, json (default: txt)
   --transcript-output <PATH>     Transcript file path (default: <output>.<fmt>)
 
@@ -92,7 +92,7 @@ stderr is not a TTY, it falls back to periodic newline-delimited JSON:
 
 ```
 # TTY mode:
-Recording | ⣾ 00:02:34 | FLAC 48kHz stereo | App: Google Chrome (PID 4201)
+Recording | ⣾ 00:02:34 | OGG 48kHz stereo | App: Google Chrome (PID 4201)
 [SYS] [00:02:30] "This is what I heard..."
 # ... newer partials overwrite the line in place ...
 [SYS] [00:02:30] "This is what I heard all together."
@@ -109,7 +109,7 @@ Recording | ⣾ 00:02:34 | FLAC 48kHz stereo | App: Google Chrome (PID 4201)
 koe record --source system --app-id com.google.Chrome --output meeting.ogg
 
 # Record microphone only, no transcription, 30 minutes max
-koe record --source mic --no-transcribe --duration 30m --output voice-memo.wav
+koe record --source mic --no-transcribe --duration 30m --output voice-memo.ogg
 
 # Record a Zoom call (system + mic) with AEC, Japanese transcription
 koe record --source both --app-id us.zoom.xos --locale ja-JP \

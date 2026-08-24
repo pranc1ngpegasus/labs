@@ -17,8 +17,6 @@ Implement the encoder abstraction and OGG Vorbis encoder.
 koe-core/src/codec/
   mod.rs      — Codec trait + OutputFormat enum + registry
   ogg.rs      — OGG Vorbis encoder
-  wav.rs      — WAV encoder (task 18)
-  flac.rs     — FLAC encoder (task 19)
 ```
 
 ## AudioEncoder Trait
@@ -31,16 +29,10 @@ pub trait AudioEncoder: Send {
 
     /// Flush any buffered frames and finalize the stream (write trailer).
     fn finalize(&mut self) -> Result<Vec<u8>, CodecError>;
-
-    fn format(&self) -> OutputFormat;
-    fn sample_rate(&self) -> u32;
-    fn channel_count(&self) -> u16;
 }
 
 pub enum OutputFormat {
     Ogg { quality: f32 },
-    Wav { bits_per_sample: u16 },
-    Flac { compression_level: u8 },
 }
 
 #[derive(Debug, thiserror::Error)]

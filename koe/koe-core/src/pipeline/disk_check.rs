@@ -11,8 +11,6 @@ const MIN_FREE_BYTES: u64 = 100 * 1024 * 1024;
 const fn estimated_bytes_per_hour(format: &OutputFormat) -> u64 {
     match format {
         OutputFormat::Ogg { .. } => 42 * 1024 * 1024,
-        OutputFormat::Flac { .. } => 210 * 1024 * 1024,
-        OutputFormat::Wav { .. } => 2_100 * 1024 * 1024,
     }
 }
 
@@ -79,14 +77,8 @@ mod tests {
     #[test]
     fn rejects_impossibly_large_requirement() {
         let tmp = std::env::temp_dir().join("koe-disk-check-test.ogg");
-        let err = check_disk_space(
-            &tmp,
-            &OutputFormat::Wav {
-                bits_per_sample: 32,
-            },
-            Some(1_000_000.0),
-        )
-        .expect_err("should fail on insufficient space");
+        let err = check_disk_space(&tmp, &OutputFormat::Ogg { quality: 0.4 }, Some(1_000_000.0))
+            .expect_err("should fail on insufficient space");
         assert!(matches!(err, RecordingError::InsufficientDiskSpace { .. }));
     }
 

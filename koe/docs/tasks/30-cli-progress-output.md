@@ -18,7 +18,7 @@ Implement live-updating progress output for `koe record`.
 When stderr is a TTY, render a live-updating status block:
 
 ```
-Recording | ⣾ 00:02:34 | FLAC 48kHz stereo | App: Google Chrome (PID 4201)
+Recording | ⣾ 00:02:34 | OGG 48kHz stereo | App: Google Chrome (PID 4201)
 [SYS] [00:02:30] "This is what I heard..."
 ```
 

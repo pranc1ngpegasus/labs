@@ -78,9 +78,12 @@ impl std::fmt::Display for AudioDeviceInfo {
 
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum OutputFormat {
+    /// OGG Vorbis, quality-based VBR.
+    ///
+    /// `quality` is the libvorbis VBR quality in `[-0.1, 1.0]` (the value is
+    /// validated when the encoder is created). `0.4` is Koe's speech-optimized
+    /// default (~128 kbps nominal at 48 kHz stereo).
     Ogg { quality: f32 },
-    Wav { bits_per_sample: u16 },
-    Flac { compression_level: u8 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
