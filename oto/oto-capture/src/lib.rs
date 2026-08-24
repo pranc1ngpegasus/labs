@@ -1,12 +1,17 @@
 //! Oto capture — device enumeration and microphone capture.
 //!
 //! Wraps [`shiguredo_audio_device`] so that platform-specific backend code and
-//! feature selection stay confined to this crate. Device listing lands here;
-//! capture sessions arrive with the recording pipeline (design 02).
+//! feature selection stay confined to this crate. Device listing and capture
+//! sessions land here (design 02).
+
+mod capture;
 
 use serde::Serialize;
 use shiguredo_audio_device::AudioDeviceList;
 use thiserror::Error;
+
+pub use capture::CaptureSession;
+pub use shiguredo_audio_device::{AudioCaptureConfig, AudioFormat, AudioFrameOwned};
 
 /// A single enumerable input device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
