@@ -2594,9 +2594,11 @@ dependencies = [
 name = "oto-cli"
 version = "0.0.0"
 dependencies = [
+ "jiff",
  "oto-core",
  "serde_json",
  "thiserror 2.0.20",
+ "tokio",
  "usage-rs",
  "workspace-hack",
 ]
@@ -2615,6 +2617,7 @@ dependencies = [
 name = "oto-encode"
 version = "0.0.0"
 dependencies = [
+ "getrandom 0.2.17",
  "ogg",
  "rubato",
  "shiguredo_opus",

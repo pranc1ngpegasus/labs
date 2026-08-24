@@ -4,6 +4,7 @@ name = "oto-encode"
 version.workspace = true
 
 [dependencies]
+getrandom = { workspace = true }
 ogg = { workspace = true }
 rubato = { workspace = true }
 shiguredo_opus = { workspace = true }
