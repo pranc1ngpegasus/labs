@@ -71,7 +71,7 @@ memchr = { version = "2", features = ["use_std"] }
 minimal-lexical = { version = "0.2", default-features = false, features = ["std"] }
 nom = { version = "7" }
 once_cell = { version = "1", features = ["portable-atomic"] }
-prettyplease = { version = "0.2", default-features = false, features = ["verbatim"] }
+prettyplease = { version = "0.3", default-features = false, features = ["verbatim"] }
 proc-macro2 = { version = "1" }
 quote = { version = "1" }
 regex = { version = "1" }
