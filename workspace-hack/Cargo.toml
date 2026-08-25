@@ -58,7 +58,7 @@ toml_parser = { version = "1" }
 toml_writer = { version = "1" }
 tracing = { version = "0.1", default-features = false, features = ["log", "std"] }
 tracing-core = { version = "0.1" }
-unicode-truncate = { version = "2", default-features = false, features = ["std"] }
+unicode-truncate = { version = "3", default-features = false, features = ["std"] }
 winnow = { version = "1" }
 
 [build-dependencies]
