@@ -7,14 +7,15 @@
 use std::fs::File;
 use std::path::Path;
 
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
+use symphonia::core::audio::Channels;
+use symphonia::core::codecs::audio::{AudioDecoder, AudioDecoderOptions};
+use symphonia::core::codecs::CodecParameters;
 use symphonia::core::errors::Error as SymphoniaError;
-use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo, Track};
+use symphonia::core::formats::probe::Hint;
+use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo, Track, TrackType};
 use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
 use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
-use symphonia::core::units::{Time, TimeBase};
+use symphonia::core::units::{Time, TimeBase, Timestamp};
 
 use crate::MainError;
 
@@ -48,13 +49,18 @@ pub fn decode_to_canonical(
 ) -> Result<(Vec<f32>, DecodedAudioInfo), MainError> {
     let (mut format, track) = open_format(path)?;
     let track_id = track.id;
-    let source_rate = track.codec_params.sample_rate.ok_or_else(|| {
+    let audio_params = track
+        .codec_params
+        .as_ref()
+        .and_then(CodecParameters::audio)
+        .ok_or_else(|| MainError::InvalidArgs(format!("no audio codec in '{}'", path.display())))?;
+    let source_rate = audio_params.sample_rate.ok_or_else(|| {
         MainError::InvalidArgs(format!("sample rate unknown for '{}'", path.display()))
     })?;
-    let source_channels = track
-        .codec_params
+    let source_channels = audio_params
         .channels
-        .map_or(1, symphonia::core::audio::Channels::count)
+        .as_ref()
+        .map_or(1, Channels::count)
         .max(1);
 
     let source_duration_ms = track_duration_ms(&track);
@@ -79,7 +85,7 @@ pub fn decode_to_canonical(
     };
 
     let mut decoder = symphonia::default::get_codecs()
-        .make(&track.codec_params, &DecoderOptions::default())
+        .make_audio_decoder(audio_params, &AudioDecoderOptions::default())
         .map_err(|err| {
             MainError::InvalidArgs(format!("unsupported codec in '{}': {err}", path.display()))
         })?;
@@ -136,15 +142,12 @@ fn open_format(path: &Path) -> Result<(Box<dyn FormatReader>, Track), MainError>
         hint.with_extension(ext);
     }
 
-    let probed = symphonia::default::get_probe()
-        .format(
+    let format = symphonia::default::get_probe()
+        .probe(
             &hint,
             mss,
-            &FormatOptions {
-                enable_gapless: true,
-                ..FormatOptions::default()
-            },
-            &MetadataOptions::default(),
+            FormatOptions::default(),
+            MetadataOptions::default(),
         )
         .map_err(|err| {
             MainError::InvalidArgs(format!(
@@ -153,15 +156,8 @@ fn open_format(path: &Path) -> Result<(Box<dyn FormatReader>, Track), MainError>
             ))
         })?;
 
-    let format = probed.format;
     let track = format
-        .default_track()
-        .or_else(|| {
-            format
-                .tracks()
-                .iter()
-                .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
-        })
+        .default_track(TrackType::Audio)
         .ok_or_else(|| MainError::InvalidArgs(format!("no audio track in '{}'", path.display())))?
         .clone();
     Ok((format, track))
@@ -177,13 +173,11 @@ fn maybe_seek_to_start(
     let Some(start) = start_ms.filter(|ms| *ms > 0) else {
         return false;
     };
-    #[allow(clippy::cast_precision_loss)]
-    let secs = start as f64 / 1000.0;
     format
         .seek(
             SeekMode::Accurate,
             SeekTo::Time {
-                time: Time::from(secs),
+                time: Time::from_millis_u64(start),
                 track_id: Some(track_id),
             },
         )
@@ -193,20 +187,20 @@ fn maybe_seek_to_start(
 fn decode_window(
     path: &Path,
     format: &mut dyn FormatReader,
-    decoder: &mut dyn symphonia::core::codecs::Decoder,
+    decoder: &mut dyn AudioDecoder,
     track_id: u32,
     source_channels: usize,
     start_frame: u64,
     end_frame: Option<u64>,
 ) -> Result<Vec<f32>, MainError> {
-    let mut sample_buf: Option<SampleBuffer<f32>> = None;
     let mut raw_interleaved = Vec::new();
     let mut frames_seen: u64 = 0;
     let channels = source_channels.max(1);
 
     loop {
         let packet = match format.next_packet() {
-            Ok(packet) => packet,
+            Ok(Some(packet)) => packet,
+            Ok(None) => break,
             Err(SymphoniaError::ResetRequired) => {
                 decoder.reset();
                 continue;
@@ -230,7 +224,7 @@ fn decode_window(
             },
         };
 
-        if packet.track_id() != track_id {
+        if packet.track_id != track_id {
             continue;
         }
 
@@ -245,32 +239,24 @@ fn decode_window(
             },
         };
 
-        if sample_buf
-            .as_ref()
-            .is_none_or(|buf| audio_buf.capacity() > buf.capacity())
-        {
-            let spec = *audio_buf.spec();
-            let capacity = u64::try_from(audio_buf.capacity()).unwrap_or(0);
-            sample_buf = Some(SampleBuffer::<f32>::new(capacity, spec));
-        }
+        // Copy the decoded packet into interleaved f32, converting from whatever
+        // sample format the codec produced.
+        let total_samples = audio_buf.samples_interleaved();
+        let mut samples = vec![0.0f32; total_samples];
+        audio_buf.copy_to_slice_interleaved(&mut samples);
 
-        let Some(buf) = sample_buf.as_mut() else {
-            continue;
-        };
-        buf.copy_interleaved_ref(audio_buf);
-        let frames_in_packet = buf.samples().len() / channels;
-        let frames_in_packet_u64 = u64::try_from(frames_in_packet).unwrap_or(u64::MAX);
+        let frames_in_packet = u64::try_from(total_samples / channels).unwrap_or(u64::MAX);
 
         append_windowed(
             &mut raw_interleaved,
-            buf.samples(),
+            &samples,
             channels,
             frames_seen,
-            frames_in_packet_u64,
+            frames_in_packet,
             start_frame,
             end_frame,
         );
-        frames_seen = frames_seen.saturating_add(frames_in_packet_u64);
+        frames_seen = frames_seen.saturating_add(frames_in_packet);
 
         if end_frame.is_some_and(|end| frames_seen >= end) {
             break;
@@ -281,16 +267,21 @@ fn decode_window(
 }
 
 fn track_duration_ms(track: &Track) -> Option<u64> {
-    let n_frames = track.codec_params.n_frames?;
+    let n_frames = track.num_frames?;
     let tb = track
-        .codec_params
         .time_base
-        .unwrap_or_else(|| TimeBase::new(1, track.codec_params.sample_rate.unwrap_or(1)));
-    let time = tb.calc_time(n_frames);
-    #[allow(clippy::cast_precision_loss)]
-    let secs = time.seconds as f64 + time.frac;
+        .or_else(|| {
+            track
+                .codec_params
+                .as_ref()
+                .and_then(CodecParameters::audio)
+                .and_then(|p| p.sample_rate)
+                .and_then(|rate| TimeBase::try_new(1, rate))
+        })?;
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    Some((secs * 1000.0).round() as u64)
+    let time = tb.calc_time(Timestamp::new(i64::try_from(n_frames).ok()?))?;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Some((time.as_secs_f64() * 1000.0).round() as u64)
 }
 
 fn normalize_window(
