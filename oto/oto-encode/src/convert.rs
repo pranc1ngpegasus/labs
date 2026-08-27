@@ -190,7 +190,7 @@ impl Converter {
             && chunk.channels == self.target_channels
         {
             let mut out = Vec::with_capacity(chunk.data.len() / 2);
-            for pair in chunk.data.chunks_exact(2) {
+            for pair in chunk.data.as_chunks::<2>().0 {
                 out.push(i16::from_le_bytes([pair[0], pair[1]]));
             }
             return Ok(out);
@@ -203,7 +203,7 @@ impl Converter {
                 if !chunk.data.len().is_multiple_of(2) {
                     return Err(ConvertError::Format(PcmFormat::S16));
                 }
-                for pair in chunk.data.chunks_exact(2) {
+                for pair in chunk.data.as_chunks::<2>().0 {
                     let s = i16::from_le_bytes([pair[0], pair[1]]);
                     self.f32_buf.push(s as f32 / i16::MAX as f32);
                 }
@@ -212,7 +212,7 @@ impl Converter {
                 if !chunk.data.len().is_multiple_of(4) {
                     return Err(ConvertError::Format(PcmFormat::F32));
                 }
-                for quad in chunk.data.chunks_exact(4) {
+                for quad in chunk.data.as_chunks::<4>().0 {
                     let s = f32::from_le_bytes([quad[0], quad[1], quad[2], quad[3]]);
                     self.f32_buf.push(s);
                 }

@@ -217,7 +217,7 @@ impl Bm25Index {
         hits.sort_by(|a, b| {
             b.score
                 .partial_cmp(&a.score)
-                .map_or(std::cmp::Ordering::Equal, |ordering| ordering)
+                .unwrap_or(std::cmp::Ordering::Equal)
                 .then_with(|| a.path.cmp(&b.path))
         });
         hits.truncate(limit);

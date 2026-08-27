@@ -50,7 +50,7 @@ fn parse_hunk_range(value: &str) -> Result<(usize, usize), ToolsError> {
     let value = value
         .strip_prefix(['-', '+'])
         .ok_or_else(|| ToolsError::Edit(format!("invalid hunk range `{value}`")))?;
-    let (start, count) = value.split_once(',').map_or((value, "1"), |parts| parts);
+    let (start, count) = value.split_once(',').unwrap_or((value, "1"));
     let start = start
         .parse()
         .map_err(|_| ToolsError::Edit(format!("invalid hunk start `{start}`")))?;

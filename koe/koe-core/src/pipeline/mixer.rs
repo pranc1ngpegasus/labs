@@ -124,7 +124,7 @@ fn mix_block(
         let far_m: Vec<f32> = far_l
             .iter()
             .zip(far_r.iter())
-            .map(|(&l, &r)| 0.5 * (l + r))
+            .map(|(&l, &r)| f32::midpoint(l, r))
             .collect();
         aec.process_block(&far_m, &near_m)
     } else {
