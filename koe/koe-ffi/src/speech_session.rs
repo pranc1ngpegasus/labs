@@ -493,7 +493,13 @@ fn fill_buffer(
     let frames = frame_count.min(pcm.len() / CHANNELS);
     let left_slice = unsafe { std::slice::from_raw_parts_mut(left, frames) };
     let right_slice = unsafe { std::slice::from_raw_parts_mut(right, frames) };
-    for (i, pair) in pcm.chunks_exact(CHANNELS).take(frames).enumerate() {
+    for (i, pair) in pcm
+        .as_chunks::<CHANNELS>()
+        .0
+        .iter()
+        .take(frames)
+        .enumerate()
+    {
         left_slice[i] = pair[0];
         right_slice[i] = pair[1];
     }
