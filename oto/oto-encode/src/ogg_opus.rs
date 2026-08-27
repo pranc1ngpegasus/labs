@@ -11,7 +11,7 @@
 
 use std::io::{Seek, Write};
 
-use getrandom::getrandom;
+use getrandom::fill;
 use ogg::{PacketWriteEndInfo, PacketWriter};
 use shiguredo_opus::Encoder;
 
@@ -91,7 +91,7 @@ impl<W: Write + Seek> OggOpusEncoder<'_, W> {
         );
 
         let mut serial_bytes = [0_u8; 4];
-        getrandom(&mut serial_bytes).map_err(|e| Error::Codec(e.to_string()))?;
+        fill(&mut serial_bytes).map_err(|e| Error::Codec(e.to_string()))?;
         let serial = u32::from_le_bytes(serial_bytes).max(1);
 
         let mut packet_writer = PacketWriter::new(writer);

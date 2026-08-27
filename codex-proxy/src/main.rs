@@ -113,7 +113,7 @@ async fn run() -> Result<ExitCode, String> {
 /// Returns an error if the operating system cannot supply randomness.
 fn generate_client_key() -> Result<String, String> {
     let mut bytes = [0u8; 32];
-    getrandom::getrandom(&mut bytes).map_err(|e| format!("failed to generate API key: {e}"))?;
+    getrandom::fill(&mut bytes).map_err(|e| format!("failed to generate API key: {e}"))?;
     Ok(URL_SAFE_NO_PAD.encode(bytes))
 }
 
