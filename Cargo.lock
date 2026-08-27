@@ -715,7 +715,7 @@ dependencies = [
  "base64",
  "bytes",
  "futures",
- "getrandom 0.2.17",
+ "getrandom 0.4.3",
  "reqwest",
  "serde",
  "serde_json",
@@ -2617,7 +2617,7 @@ dependencies = [
 name = "oto-encode"
 version = "0.0.0"
 dependencies = [
- "getrandom 0.2.17",
+ "getrandom 0.4.3",
  "ogg",
  "rubato",
  "shiguredo_opus",
