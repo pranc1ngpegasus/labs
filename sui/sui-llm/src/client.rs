@@ -839,7 +839,7 @@ impl SseDecoder {
 
     fn take_data(&mut self) -> String {
         self.data_len = 0;
-        self.data.drain(..).collect::<Vec<_>>().join("\n")
+        std::mem::take(&mut self.data).join("\n")
     }
 }
 
