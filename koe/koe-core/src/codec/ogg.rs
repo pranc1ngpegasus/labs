@@ -168,7 +168,7 @@ impl OggEncoder {
         self.right.clear();
         self.left.reserve(frames);
         self.right.reserve(frames);
-        for pair in pcm.chunks_exact(2) {
+        for pair in pcm.as_chunks::<2>().0 {
             self.left.push(pair[0]);
             self.right.push(pair[1]);
         }

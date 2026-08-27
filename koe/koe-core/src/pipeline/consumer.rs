@@ -202,7 +202,7 @@ fn emit_progress(
 fn peak_levels(samples: &[f32]) -> (f32, f32) {
     let mut left = 0.0_f32;
     let mut right = 0.0_f32;
-    for pair in samples.chunks_exact(2) {
+    for pair in samples.as_chunks::<2>().0 {
         left = left.max(pair[0].abs());
         right = right.max(pair[1].abs());
     }
