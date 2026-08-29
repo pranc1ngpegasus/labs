@@ -3737,6 +3737,7 @@ name = "sui-tools"
 version = "0.0.0"
 dependencies = [
  "gitpatch",
+ "rustix",
  "serde",
  "serde_json",
  "tantivy",

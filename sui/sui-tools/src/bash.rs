@@ -42,6 +42,9 @@ use tokio::{
     time::timeout,
 };
 
+use rustix::io::Errno;
+use rustix::process::{Pid, Signal, kill_process_group};
+
 use crate::ToolsError;
 
 /// Soft cap on buffered stdout or stderr (per stream).
@@ -159,7 +162,7 @@ impl BashSession {
     /// Invokes `bash --noprofile --norc` so user/system rc files are not sourced.
     /// `BASH_ENV` and `ENV` are removed from the child environment so those hooks
     /// cannot bypass `--norc`. On Unix, the child is placed in its own process
-    /// group; [`Self::kill`] / [`Drop`] signal that group via `/bin/kill -KILL -<pgid>`.
+    /// group; [`Self::kill`] / [`Drop`] signal that group via `kill(2)`.
     ///
     /// # Errors
     ///
@@ -453,17 +456,17 @@ impl BashSession {
             let Some(pgid) = self.pgid else {
                 return Ok(());
             };
-            match std::process::Command::new("/bin/kill")
-                // procps-ng requires `--` before a negative pgid so it is not
-                // parsed as another option (`kill -KILL -<pgid>` is a no-op).
-                .args(["-KILL", "--", &format!("-{pgid}")])
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-            {
-                Ok(_status) => Ok(()), // non-zero is fine (ESRCH if already gone)
-                Err(error) => Err(ToolsError::Bash(format!("/bin/kill failed: {error}"))),
+            // Signal the whole group directly via the kill(2) syscall instead of
+            // shelling out to `/bin/kill`, which is absent in hermetic sandboxes
+            // (e.g. Nix builds) and minimal containers.
+            let group = Pid::from_raw(pgid.cast_signed())
+                .ok_or_else(|| ToolsError::Bash(format!("invalid process group id: {pgid}")))?;
+            // ESRCH means the group already exited — nothing left to kill.
+            match kill_process_group(group, Signal::KILL) {
+                Ok(()) | Err(Errno::SRCH) => Ok(()),
+                Err(error) => Err(ToolsError::Bash(format!(
+                    "kill process group {pgid} failed: {error}"
+                ))),
             }
         }
         #[cfg(not(unix))]
@@ -581,6 +584,7 @@ pub(crate) fn validate_single_line(line: &str) -> Result<(), ToolsError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustix::process::test_kill_process;
 
     #[tokio::test]
     async fn echo_roundtrip() -> Result<(), ToolsError> {
@@ -774,24 +778,23 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
 
-        let pid = stdout
+        let raw: u32 = stdout
             .lines()
             .find_map(|line| line.strip_prefix("PID:"))
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .ok_or_else(|| ToolsError::Bash(format!("missing PID in stdout: {stdout:?}")))?
-            .to_owned();
+            .parse()
+            .map_err(|e| ToolsError::Bash(format!("invalid PID in stdout: {e}")))?;
 
         // Do not call wait() (it also cleans the group); Drop must do the work.
         drop(session);
         tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let alive = std::process::Command::new("/bin/kill")
-            .args(["-0", &pid])
-            .status()
-            .map_err(|e| ToolsError::Bash(format!("/bin/kill -0 failed: {e}")))?
-            .success();
-        assert!(!alive, "orphan sleep pid {pid} still alive after Drop");
+        let pid = Pid::from_raw(raw.cast_signed())
+            .ok_or_else(|| ToolsError::Bash(format!("invalid PID: {raw}")))?;
+        let alive = test_kill_process(pid).is_ok();
+        assert!(!alive, "orphan sleep pid {raw} still alive after Drop");
         Ok(())
     }
 
