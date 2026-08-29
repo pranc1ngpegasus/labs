@@ -184,7 +184,13 @@
               pname = "labs-workspace";
               # sui-tools' edit tests run `git init` in a temp dir; oto's test
               # binaries link the dynamic PulseAudio client library on Linux.
-              nativeBuildInputs = [ pkgs.git ] ++ audioNativeBuildInputs;
+              # pkgs.cacert sets SSL_CERT_FILE so reqwest's rustls platform
+              # verifier can build a client in the (network-isolated) sandbox.
+              nativeBuildInputs = [
+                pkgs.git
+                pkgs.cacert
+              ]
+              ++ audioNativeBuildInputs;
               buildInputs = audioBuildInputs;
               env = audioEnv;
             };
