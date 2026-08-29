@@ -3,12 +3,5 @@ description: Install Nix and restore the shared Nix store cache
 runs:
   using: composite
   steps:
-    - uses: nixbuild/nix-quick-install-action@9f63be77f412a248c9d9a65a4c82cf066cdf8f0c # v35
-    - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
-      with:
-        primary-key: nix-v0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.lock') }}
-        restore-prefixes-first-match: nix-v0-${{ runner.os }}-${{ runner.arch }}-
-        purge: true
-        purge-prefixes: nix-v0-${{ runner.os }}-
-        purge-created: 0
-        purge-primary-key: never
+    - uses: DeterminateSystems/determinate-nix-action@527f17dd63d2d60d3e5552934bc84b9a33a14d11 # v3.22.2
+    - uses: DeterminateSystems/flakehub-cache-action@main
