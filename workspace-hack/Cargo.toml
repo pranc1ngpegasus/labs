@@ -19,15 +19,12 @@ camino = { version = "1", default-features = false, features = ["serde1"] }
 compact_str = { version = "0.9", default-features = false, features = ["std"] }
 crossbeam-utils = { version = "0.8" }
 either = { version = "1", default-features = false, features = ["use_std"] }
-form_urlencoded = { version = "1" }
 futures-channel = { version = "0.3", features = ["sink"] }
 futures-core = { version = "0.3" }
 futures-sink = { version = "0.3" }
 futures-util = { version = "0.3", features = ["channel", "io", "sink"] }
 getrandom = { version = "0.4", default-features = false, features = ["std", "sys_rng"] }
 hashbrown = { version = "0.17" }
-hyper = { version = "1", features = ["full"] }
-hyper-util = { version = "0.1", features = ["http1", "http2", "server", "service", "tokio"] }
 itertools = { version = "0.14" }
 kasuari = { version = "0.4", default-features = false, features = ["std"] }
 memchr = { version = "2", features = ["use_std"] }
@@ -35,17 +32,15 @@ minimal-lexical = { version = "0.2", default-features = false, features = ["std"
 nom = { version = "7" }
 num-traits = { version = "0.2", features = ["i128"] }
 once_cell = { version = "1", features = ["portable-atomic"] }
-percent-encoding = { version = "2" }
 ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
 ratatui-core = { version = "0.1", features = ["std", "underline-color"] }
 ratatui-widgets = { version = "0.3", default-features = false, features = ["std"] }
 regex = { version = "1" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-onepass", "hybrid", "meta", "nfa", "perf", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
-reqwest = { version = "0.13", default-features = false, features = ["form", "json", "query", "rustls", "stream"] }
 serde = { version = "1", features = ["alloc", "derive"] }
 serde_core = { version = "1", features = ["alloc"] }
-serde_json = { version = "1", features = ["raw_value", "unbounded_depth"] }
+serde_json = { version = "1", features = ["unbounded_depth"] }
 serde_spanned = { version = "1" }
 slab = { version = "0.4" }
 smallvec = { version = "1", default-features = false, features = ["const_new", "serde", "union"] }
@@ -56,7 +51,6 @@ tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process"
 toml_datetime = { version = "1", features = ["serde"] }
 toml_parser = { version = "1" }
 toml_writer = { version = "1" }
-tracing = { version = "0.1", default-features = false, features = ["log", "std"] }
 tracing-core = { version = "0.1" }
 unicode-truncate = { version = "2", default-features = false, features = ["std"] }
 winnow = { version = "1" }
