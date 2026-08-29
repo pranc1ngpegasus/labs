@@ -18,7 +18,7 @@ flake.nix
 ├─ commonArgs      : src(フィルタ済み), pname=labs-workspace, version=0.0.0, strictDeps
 ├─ cargoArtifacts  : craneLib.buildDepsOnly commonArgs   ← 依存のビルド結果(全プロジェクト共有)
 ├─ checks          : fmt / clippy(--all-targets --all-features, -D warnings) / hakari / test
-└─ packages        : { codex-proxy, sui, koe, ren, default = symlinkJoin … }
+└─ packages        : { sui, koe, ren, oto, default = symlinkJoin … }
 systems            : x86_64-linux, aarch64-linux, aarch64-darwin
 CI                 : ubuntu-latest で `nix flake check`(x86_64-linux のみ)
 ```
