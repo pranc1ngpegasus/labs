@@ -112,16 +112,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "aotuv_lancer_vorbis_sys"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bc4fd1a61860d2f1198b60bedd30910eaffa978f1ee6214dfb24ac70d589225"
-dependencies = [
- "cc",
- "ogg_next_sys",
-]
-
-[[package]]
 name = "approx"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1933,6 +1923,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "koe-capture"
+version = "0.0.0"
+dependencies = [
+ "shiguredo_audio_device",
+ "thiserror 2.0.20",
+ "workspace-hack",
+]
+
+[[package]]
 name = "koe-cli"
 version = "0.0.0"
 dependencies = [
@@ -1952,12 +1951,14 @@ name = "koe-core"
 version = "0.0.0"
 dependencies = [
  "fs2",
+ "getrandom 0.4.3",
  "koe-ffi",
  "log",
+ "ogg",
  "serde_json",
+ "shiguredo_opus",
  "thiserror 2.0.20",
  "tokio",
- "vorbis_rs",
  "workspace-hack",
 ]
 
@@ -1967,6 +1968,7 @@ version = "0.0.0"
 dependencies = [
  "block2",
  "dispatch2",
+ "koe-capture",
  "koe-transcribe",
  "objc2",
  "objc2-app-kit",
@@ -2423,15 +2425,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fdab8dcd8d4052eaacaf8fb07a3ccd9a6e26efadb42878a413c68fc4af1dee2b"
 dependencies = [
  "byteorder",
-]
-
-[[package]]
-name = "ogg_next_sys"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed2d7a48e247c2bb07e633aefb65a38648ea58c7eedd4e4408a5861721ab049b"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -4772,20 +4765,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "vorbis_rs"
-version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49c5da94d280f7a27e8c937e9b73df2da3e23a2583f48471fd8fb4c72f9c1933"
-dependencies = [
- "aotuv_lancer_vorbis_sys",
- "errno",
- "getrandom 0.4.3",
- "ogg_next_sys",
- "thiserror 2.0.20",
- "tinyvec",
 ]
 
 [[package]]

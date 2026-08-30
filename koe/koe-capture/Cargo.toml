@@ -1,0 +1,21 @@
+[package]
+description = "Koe audio device capture and playback, wrapping shiguredo_audio_device"
+edition.workspace = true
+name = "koe-capture"
+version.workspace = true
+
+# Platform backends are selected per target (mirrors oto-capture). koe's
+# capture pipeline is macOS-first, so only CoreAudio is wired; other targets
+# still compile (the crate exposes no-op stubs there).
+[target.'cfg(target_os = "macos")'.dependencies]
+shiguredo_audio_device = { workspace = true, default-features = false, features = [
+  "coreaudio",
+  "default-coreaudio",
+] }
+
+[dependencies]
+thiserror = { workspace = true }
+workspace-hack = { workspace = true }
+
+[lints]
+workspace = true
