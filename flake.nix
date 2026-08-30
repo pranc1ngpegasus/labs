@@ -49,9 +49,8 @@
           rustToolchain = pkgs.rust-bin.stable.latest.default;
           craneLib = (inputs.crane.mkLib pkgs).overrideToolchain rustToolchain;
           src = pkgs.lib.cleanSourceWith {
-            # cleanCargoSource would strip the non-Rust files that the ren
-            # crates pull in via include_str! (their assets/ and bundled/
-            # dirs, plus ren/README.md used by test code) — keep those.
+            # keep non-Rust sources: ren's assets/bundled + README (include_str!),
+            # and the native shim/header that koe-transcribe compiles with cc.
             src = ./.;
             filter =
               path: type:
@@ -60,6 +59,7 @@
               in
               builtins.match ".*/(bundled|assets)(/.*)?$" p != null
               || pkgs.lib.hasSuffix "/README.md" p
+              || builtins.match ".*\\.(m|h)$" p != null
               || craneLib.filterCargoSources path type;
           };
 
@@ -210,6 +210,10 @@
                 src
                 version
                 cargoArtifacts
+                cargoVendorDir
+                audioNativeBuildInputs
+                audioBuildInputs
+                audioEnv
                 ;
             };
             koe = import ./koe/package.nix {
@@ -219,6 +223,10 @@
                 src
                 version
                 cargoArtifacts
+                cargoVendorDir
+                audioNativeBuildInputs
+                audioBuildInputs
+                audioEnv
                 ;
             };
             ren = import ./ren/package.nix {
@@ -228,6 +236,10 @@
                 src
                 version
                 cargoArtifacts
+                cargoVendorDir
+                audioNativeBuildInputs
+                audioBuildInputs
+                audioEnv
                 ;
             };
             oto = import ./oto/package.nix {
