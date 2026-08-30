@@ -7,10 +7,25 @@ use koe_ffi::{OutputFormat, RecordingError};
 /// Minimum free space required when no duration estimate is available.
 const MIN_FREE_BYTES: u64 = 100 * 1024 * 1024;
 
-/// Estimated bytes per hour by output format (from task 43).
+/// libopus default bitrate for 48 kHz stereo in `Audio` mode (verified via
+/// `Encoder::get_bitrate()` for the exact config `OggEncoder` uses).
+const OGG_DEFAULT_BITRATE_BPS: u32 = 120_000;
+
+/// Estimated bytes per hour by output format.
+///
+/// Ogg/Opus is bitrate-driven, so the estimate scales with the configured
+/// `bitrate_bps` (plus ~10% Ogg page/Opus packet overhead). `None` falls back
+/// to libopus's default for 48 kHz stereo.
 const fn estimated_bytes_per_hour(format: &OutputFormat) -> u64 {
     match format {
-        OutputFormat::Ogg { .. } => 42 * 1024 * 1024,
+        OutputFormat::Ogg { bitrate_bps } => {
+            let bps = match bitrate_bps {
+                Some(bps) => *bps as u64,
+                None => OGG_DEFAULT_BITRATE_BPS as u64,
+            };
+            let raw_bytes_per_hour = bps.saturating_mul(3600) / 8;
+            raw_bytes_per_hour + raw_bytes_per_hour / 10
+        },
     }
 }
 
@@ -77,9 +92,38 @@ mod tests {
     #[test]
     fn rejects_impossibly_large_requirement() {
         let tmp = std::env::temp_dir().join("koe-disk-check-test.ogg");
-        let err = check_disk_space(&tmp, &OutputFormat::Ogg { quality: 0.4 }, Some(1_000_000.0))
-            .expect_err("should fail on insufficient space");
+        let err = check_disk_space(
+            &tmp,
+            &OutputFormat::Ogg { bitrate_bps: None },
+            Some(1_000_000.0),
+        )
+        .expect_err("should fail on insufficient space");
         assert!(matches!(err, RecordingError::InsufficientDiskSpace { .. }));
+    }
+
+    #[test]
+    fn opus_estimate_scales_with_bitrate() {
+        let default = estimated_bytes_per_hour(&OutputFormat::Ogg { bitrate_bps: None });
+        let low = estimated_bytes_per_hour(&OutputFormat::Ogg {
+            bitrate_bps: Some(64_000),
+        });
+        let high = estimated_bytes_per_hour(&OutputFormat::Ogg {
+            bitrate_bps: Some(512_000),
+        });
+        assert!(
+            low < default && default < high,
+            "estimate must scale with bitrate"
+        );
+        // 128 kbps → 128_000 * 3600 / 8 bytes/hour + ~10% Ogg overhead.
+        assert_eq!(
+            estimated_bytes_per_hour(&OutputFormat::Ogg {
+                bitrate_bps: Some(128_000)
+            }),
+            128_000u64 * 3600 / 8 * 11 / 10
+        );
+        // Pin the `None` default's absolute value with a literal so a wrong
+        // constant (not just an out-of-order one) is caught.
+        assert_eq!(default, 120_000u64 * 3600 / 8 * 11 / 10);
     }
 
     #[test]

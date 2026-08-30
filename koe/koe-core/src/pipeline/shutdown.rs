@@ -317,8 +317,8 @@ mod tests {
         assert!(bytes.len() >= 56, "OGG too small: {} bytes", bytes.len());
         assert_eq!(&bytes[0..4], b"OggS");
         assert!(
-            String::from_utf8_lossy(&bytes).contains("vorbis"),
-            "expected a Vorbis bitstream"
+            String::from_utf8_lossy(&bytes).contains("Opus"),
+            "expected an Opus bitstream"
         );
     }
 
@@ -335,7 +335,10 @@ mod tests {
         assert!(started.elapsed() < SHUTDOWN_BUDGET);
         assert!(result.consumer_drained);
         assert!(matches!(pipeline.state(), PipelineState::Stopped));
-        assert!(matches!(result.format, OutputFormat::Ogg { quality: 0.4 }));
+        assert!(matches!(
+            result.format,
+            OutputFormat::Ogg { bitrate_bps: None }
+        ));
         assert_valid_ogg(&output);
         let _ = std::fs::remove_file(output);
     }

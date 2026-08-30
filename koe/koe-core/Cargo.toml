@@ -13,9 +13,12 @@ system-audio = []
 
 [dependencies]
 fs2 = { workspace = true }
+getrandom = { workspace = true }
 koe-ffi = { workspace = true }
 log = { workspace = true }
+ogg = { workspace = true }
 serde_json = { workspace = true }
+shiguredo_opus = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = [
   "fs",
@@ -25,7 +28,6 @@ tokio = { workspace = true, features = [
   "sync",
   "time",
 ] }
-vorbis_rs = { workspace = true }
 workspace-hack.workspace = true
 
 [lints]

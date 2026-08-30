@@ -494,7 +494,7 @@ mod tests {
     #[test]
     fn format_label_names_containers() {
         assert_eq!(
-            format_label(&OutputFormat::Ogg { quality: 0.5 }),
+            format_label(&OutputFormat::Ogg { bitrate_bps: None }),
             "OGG 48kHz stereo"
         );
     }

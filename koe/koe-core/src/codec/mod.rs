@@ -50,9 +50,12 @@ pub fn create_encoder(
     comments: Option<&OggComments>,
 ) -> Result<Box<dyn AudioEncoder>, CodecError> {
     match format {
-        OutputFormat::Ogg { quality } => {
+        OutputFormat::Ogg { bitrate_bps } => {
             let comments = comments.cloned().unwrap_or_else(OggComments::basic);
-            Ok(Box::new(OggEncoder::with_comments(*quality, &comments)?))
+            Ok(Box::new(OggEncoder::with_comments(
+                *bitrate_bps,
+                &comments,
+            )?))
         },
     }
 }
@@ -63,7 +66,8 @@ mod tests {
 
     #[test]
     fn create_encoder_ogg_emits_ogg_capture_pattern() {
-        let mut encoder = create_encoder(&OutputFormat::Ogg { quality: 0.4 }, None).expect("ogg");
+        let mut encoder =
+            create_encoder(&OutputFormat::Ogg { bitrate_bps: None }, None).expect("ogg");
         let pcm = vec![0.0_f32; 960 * 2];
         let mut out = encoder.encode(&pcm).expect("encode");
         out.extend(encoder.finalize().expect("finalize"));

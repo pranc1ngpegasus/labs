@@ -1,23 +1,34 @@
-//! OGG Vorbis encoder (48 kHz stereo, quality-based VBR).
+//! OGG Opus encoder and container writer (48 kHz stereo, RFC 7845).
+//!
+//! The header builders emit fixed-width binary fields mandated by RFC 7845
+//! (u16 pre-skip, u32 comment lengths, u8 channels), so narrowing casts from
+//! wider Rust types and `f32`→`i16` sample scaling are the file's normal idiom.
+#![allow(
+    clippy::cast_lossless,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
 
 use std::fmt::Write as _;
 use std::io::{self, Write};
-use std::num::{NonZeroU8, NonZeroU32};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use getrandom::fill;
 use koe_ffi::AudioSourceConfig;
-use vorbis_rs::{VorbisBitrateManagementStrategy, VorbisEncoder, VorbisEncoderBuilder};
+use ogg::{PacketWriteEndInfo, PacketWriter};
+use shiguredo_opus::Encoder;
 
 use super::{AudioEncoder, CodecError};
 
 const SAMPLE_RATE: u32 = 48_000;
 const CHANNELS: u16 = 2;
-/// libvorbis VBR quality range used by [`VorbisBitrateManagementStrategy::QualityVbr`].
-const QUALITY_MIN: f32 = -0.1;
-const QUALITY_MAX: f32 = 1.0;
+/// Opus granule positions are 48 kHz samples per RFC 7845; a 20 ms frame is
+/// always 960 such samples regardless of the encoder input rate.
+const FRAME_SAMPLES_48K: u64 = 960;
 
-/// Vorbis Comment tags written into the OGG identification block.
+/// Opus comment tags written into the identification header.
 #[derive(Debug, Clone)]
 pub struct OggComments {
     /// `TITLE` tag.
@@ -81,72 +92,90 @@ impl OggComments {
     }
 }
 
-/// Encodes interleaved stereo `f32` PCM into an OGG Vorbis bitstream.
+/// Encodes interleaved stereo `f32` PCM into an OGG Opus bitstream.
+///
+/// The [`PacketWriter`] routes every completed page into a shared sink buffer;
+/// [`AudioEncoder::encode`] returns whatever pages accumulated since the last
+/// call, so the pipeline can write progress incrementally without a streaming
+/// writer.
 pub struct OggEncoder {
-    /// Held behind `Option` so [`AudioEncoder::finalize`] can consume it.
-    encoder: Option<VorbisEncoder<SharedSink>>,
+    encoder: Encoder,
+    writer: PacketWriter<'static, SharedSink>,
     sink_buf: Arc<Mutex<Vec<u8>>>,
-    /// Reused planar scratch buffers (avoid per-chunk allocation).
-    left: Vec<f32>,
-    right: Vec<f32>,
+    /// Interleaved `f32` input buffered toward one 20 ms Opus frame.
+    buf: Vec<f32>,
+    /// Encoder frame size (samples per channel).
+    frame_samples: usize,
+    serial: u32,
+    /// Pre-skip in 48 kHz samples (from the encoder's lookahead).
+    pre_skip_48k: u64,
+    /// Data packets encoded so far (for granule position math).
+    packets_encoded: u64,
+    /// Most recent packet, deferred so the final page can carry EOS.
+    pending: Option<EncodedPacket>,
     finished: bool,
 }
 
-// SAFETY: `VorbisEncoder` embeds raw pointers to libvorbis state and is therefore
-// `!Send`. We only ever access this encoder through `Mutex` (exclusive lock), so
-// moving the wrapper between threads is safe as long as concurrent use is prevented.
-#[allow(unsafe_code, clippy::non_send_fields_in_send_ty)]
-unsafe impl Send for OggEncoder {}
+/// A single Opus packet with its 48 kHz granule position.
+struct EncodedPacket {
+    data: Vec<u8>,
+    granule: u64,
+}
 
 impl OggEncoder {
-    /// Creates an OGG encoder with the given VBR quality and Vorbis comments.
+    /// Creates an Opus encoder with the given bitrate and comment tags.
+    ///
+    /// `bitrate_bps` of `None` lets libopus pick a default for 48 kHz stereo.
     ///
     /// # Errors
     ///
-    /// Returns [`CodecError`] when quality is out of range or libvorbis setup fails.
+    /// Returns [`CodecError`] when the Opus encoder can't be created or the
+    /// identification header can't be written.
     pub fn with_comments(
-        quality: f32,
+        bitrate_bps: Option<u32>,
         comments: &OggComments,
     ) -> Result<Self, CodecError> {
-        if !(QUALITY_MIN..=QUALITY_MAX).contains(&quality) {
-            return Err(CodecError::Encoder(format!(
-                "OGG quality {quality} out of range [{QUALITY_MIN}, {QUALITY_MAX}]"
-            )));
-        }
+        let encoder = Encoder::new(shiguredo_opus::EncoderConfig {
+            bitrate: bitrate_bps,
+            ..shiguredo_opus::EncoderConfig::new(SAMPLE_RATE, CHANNELS as u8)
+        })
+        .map_err(|e| CodecError::Encoder(e.to_string()))?;
 
-        let sample_rate = NonZeroU32::new(SAMPLE_RATE)
-            .ok_or_else(|| CodecError::Encoder("sample rate must be non-zero".to_owned()))?;
-        let channels = NonZeroU8::new(
-            u8::try_from(CHANNELS)
-                .map_err(|_| CodecError::Encoder("channel count exceeds u8".to_owned()))?,
-        )
-        .ok_or_else(|| CodecError::Encoder("channel count must be non-zero".to_owned()))?;
+        let frame_samples = encoder.frame_samples();
+        let pre_skip_48k = u64::from(
+            encoder
+                .get_lookahead()
+                .map_err(|e| CodecError::Encoder(e.to_string()))?,
+        );
+
+        let mut serial_bytes = [0_u8; 4];
+        fill(&mut serial_bytes).map_err(|e| CodecError::Encoder(e.to_string()))?;
+        let serial = u32::from_le_bytes(serial_bytes).max(1);
 
         let sink_buf = Arc::new(Mutex::new(Vec::new()));
         let sink = SharedSink {
             buf: Arc::clone(&sink_buf),
         };
-
-        let mut builder = VorbisEncoderBuilder::new(sample_rate, channels, sink)
-            .map_err(|err| CodecError::Encoder(err.to_string()))?;
-        builder.bitrate_management_strategy(VorbisBitrateManagementStrategy::QualityVbr {
-            target_quality: quality,
-        });
-        for (tag, value) in comments.as_pairs() {
-            builder
-                .comment_tag(tag, value)
-                .map_err(|err| CodecError::Encoder(err.to_string()))?;
-        }
-
-        let encoder = builder
-            .build()
-            .map_err(|err| CodecError::Encoder(err.to_string()))?;
+        let mut writer = PacketWriter::new(sink);
+        let head = build_opus_head(CHANNELS as u8, pre_skip_48k, SAMPLE_RATE);
+        writer
+            .write_packet(head, serial, PacketWriteEndInfo::NormalPacket, 0)
+            .map_err(CodecError::Io)?;
+        let opus_tags = build_opus_tags(comments);
+        writer
+            .write_packet(opus_tags, serial, PacketWriteEndInfo::EndPage, 0)
+            .map_err(CodecError::Io)?;
 
         Ok(Self {
-            encoder: Some(encoder),
+            encoder,
+            writer,
             sink_buf,
-            left: Vec::new(),
-            right: Vec::new(),
+            buf: Vec::new(),
+            frame_samples,
+            serial,
+            pre_skip_48k,
+            packets_encoded: 0,
+            pending: None,
             finished: false,
         })
     }
@@ -159,19 +188,43 @@ impl OggEncoder {
         Ok(std::mem::take(&mut *guard))
     }
 
-    fn fill_planar(
-        &mut self,
-        pcm: &[f32],
-    ) {
-        let frames = pcm.len() / 2;
-        self.left.clear();
-        self.right.clear();
-        self.left.reserve(frames);
-        self.right.reserve(frames);
-        for pair in pcm.as_chunks::<2>().0 {
-            self.left.push(pair[0]);
-            self.right.push(pair[1]);
+    fn encode_buffered(&mut self) -> Result<(), CodecError> {
+        let frame_len = self.frame_samples * CHANNELS as usize;
+        while self.buf.len() >= frame_len {
+            let i16_frame = self
+                .buf
+                .drain(..frame_len)
+                .map(f32_to_i16)
+                .collect::<Vec<_>>();
+            let packet = self
+                .encoder
+                .encode(&i16_frame)
+                .map_err(|e| CodecError::Encoder(e.to_string()))?;
+            self.push_packet(packet)?;
         }
+        Ok(())
+    }
+
+    /// Queues a packet, flushing the previously queued one so we know which is
+    /// truly last for the EOS flag on [`AudioEncoder::finalize`].
+    fn push_packet(
+        &mut self,
+        data: Vec<u8>,
+    ) -> Result<(), CodecError> {
+        let granule = self.pre_skip_48k + (self.packets_encoded + 1) * FRAME_SAMPLES_48K;
+        self.packets_encoded += 1;
+        if let Some(prev) = self.pending.take() {
+            self.writer
+                .write_packet(
+                    prev.data,
+                    self.serial,
+                    PacketWriteEndInfo::EndPage,
+                    prev.granule,
+                )
+                .map_err(CodecError::Io)?;
+        }
+        self.pending = Some(EncodedPacket { data, granule });
+        Ok(())
     }
 }
 
@@ -188,29 +241,15 @@ impl AudioEncoder for OggEncoder {
         if pcm.is_empty() {
             return self.take_encoded();
         }
-        if !pcm.len().is_multiple_of(usize::from(CHANNELS)) {
+        if !pcm.len().is_multiple_of(CHANNELS as usize) {
             return Err(CodecError::Encoder(format!(
                 "PCM length {} is not a multiple of {CHANNELS} channels",
                 pcm.len()
             )));
         }
 
-        self.fill_planar(pcm);
-        // Temporarily move planar buffers out so we can mutably borrow the encoder.
-        let left = std::mem::take(&mut self.left);
-        let right = std::mem::take(&mut self.right);
-        let encode_result = {
-            let encoder = self
-                .encoder
-                .as_mut()
-                .ok_or_else(|| CodecError::Encoder("OGG encoder already finalized".to_owned()))?;
-            encoder
-                .encode_audio_block([&left[..], &right[..]])
-                .map_err(|err| CodecError::Encoder(err.to_string()))
-        };
-        self.left = left;
-        self.right = right;
-        encode_result?;
+        self.buf.extend_from_slice(pcm);
+        self.encode_buffered()?;
         self.take_encoded()
     }
 
@@ -219,16 +258,50 @@ impl AudioEncoder for OggEncoder {
             return Ok(Vec::new());
         }
         self.finished = true;
-        if let Some(encoder) = self.encoder.take() {
-            let _sink = encoder
-                .finish()
-                .map_err(|err| CodecError::Encoder(err.to_string()))?;
+
+        // Encode a final frame from any remainder, zero-padded to a full frame.
+        let frame_len = self.frame_samples * CHANNELS as usize;
+        if !self.buf.is_empty() {
+            self.buf.resize(frame_len, 0.0);
+            let buffer: Vec<f32> = std::mem::take(&mut self.buf);
+            let i16_frame = buffer.into_iter().map(f32_to_i16).collect::<Vec<_>>();
+            let packet = self
+                .encoder
+                .encode(&i16_frame)
+                .map_err(|e| CodecError::Encoder(e.to_string()))?;
+            self.push_packet(packet)?;
+        }
+
+        let final_packet = if let Some(packet) = self.pending.take() {
+            Some(packet)
+        } else {
+            // Empty recording: emit one silence frame so the stream has an
+            // EOS page and a valid data segment.
+            let i16_frame = vec![0_i16; frame_len];
+            let data = self
+                .encoder
+                .encode(&i16_frame)
+                .map_err(|e| CodecError::Encoder(e.to_string()))?;
+            let granule = self.pre_skip_48k + (self.packets_encoded + 1) * FRAME_SAMPLES_48K;
+            Some(EncodedPacket { data, granule })
+        };
+
+        if let Some(packet) = final_packet {
+            self.writer
+                .write_packet(
+                    packet.data,
+                    self.serial,
+                    PacketWriteEndInfo::EndStream,
+                    packet.granule,
+                )
+                .map_err(CodecError::Io)?;
         }
         self.take_encoded()
     }
 }
 
-/// Shared byte sink so [`VorbisEncoder`] can write while we drain pages per chunk.
+/// Appends a complete page to the shared sink so the encoder can hand back
+/// accumulated bytes per chunk (`take_encoded`).
 struct SharedSink {
     buf: Arc<Mutex<Vec<u8>>>,
 }
@@ -248,6 +321,40 @@ impl Write for SharedSink {
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
+}
+
+/// Builds the 19-byte `OpusHead` identification header.
+fn build_opus_head(
+    channels: u8,
+    pre_skip_48k: u64,
+    input_sample_rate: u32,
+) -> Vec<u8> {
+    let mut head = Vec::with_capacity(19);
+    head.extend_from_slice(b"OpusHead");
+    head.push(1); // version
+    head.push(channels);
+    head.extend_from_slice(&(pre_skip_48k as u16).to_le_bytes());
+    head.extend_from_slice(&input_sample_rate.to_le_bytes());
+    head.extend_from_slice(&0_i16.to_le_bytes()); // output gain
+    head.push(0); // channel mapping (family 0)
+    head
+}
+
+/// Builds the `OpusTags` comment packet (vendor string + the 6 koe tags).
+fn build_opus_tags(comments: &OggComments) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(b"OpusTags");
+    let vendor = comments.encoder.as_bytes();
+    out.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
+    out.extend_from_slice(vendor);
+    let pairs = comments.as_pairs();
+    out.extend_from_slice(&(pairs.len() as u32).to_le_bytes());
+    for (tag, value) in pairs {
+        let comment = format!("{tag}={value}");
+        out.extend_from_slice(&(comment.len() as u32).to_le_bytes());
+        out.extend_from_slice(comment.as_bytes());
+    }
+    out
 }
 
 fn source_label(source: &AudioSourceConfig) -> String {
@@ -299,6 +406,14 @@ fn escape_json(value: &str) -> String {
     out
 }
 
+/// Converts a normalized `f32` sample ([-1, 1]) to 16-bit PCM, scaling to the
+/// full i16 range and clamping. Quantization truncates toward zero (matches
+/// the capture-side `s16 → f32 / 32768` mapping, so the round-trip is exact
+/// for that path).
+fn f32_to_i16(sample: f32) -> i16 {
+    (sample * 32768.0).clamp(-32768.0, 32767.0) as i16
+}
+
 /// Converts Unix seconds to `(YYYY-MM-DD, HH:MM:SS, ISO-8601Z)` in UTC.
 fn unix_to_civil(secs: u64) -> (String, String, String) {
     let days = i32::try_from(secs / 86_400).unwrap_or(i32::MAX);
@@ -330,7 +445,11 @@ fn civil_from_days(days_since_epoch: i32) -> (i32, u32, u32) {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
     use std::time::Instant;
+
+    use ogg::PacketReader;
+    use shiguredo_opus::Decoder;
 
     use super::*;
 
@@ -349,33 +468,145 @@ mod tests {
         pcm
     }
 
-    #[test]
-    fn encodes_ogg_with_valid_header_and_comments() {
-        let comments = OggComments {
+    fn sample_comments() -> OggComments {
+        OggComments {
             title: "Test recording — 2026-08-11 12:00:00".to_owned(),
             artist: "Koe".to_owned(),
             date: "2026-08-11T12:00:00Z".to_owned(),
             description: "Source: Microphone, Locale: en-US".to_owned(),
             encoder: "koe v0.0.0".to_owned(),
             koe_source: r#"{"type":"microphone"}"#.to_owned(),
-        };
-        let mut encoder = OggEncoder::with_comments(0.4, &comments).expect("encoder");
+        }
+    }
 
-        // ~1 second of audio in 960-frame blocks (20 ms @ 48 kHz).
-        let block = sine_stereo(960, 440.0);
+    /// Encodes the given interleaved stereo blocks and returns the full stream.
+    fn encode_blocks(
+        blocks: &[Vec<f32>],
+        bitrate: Option<u32>,
+    ) -> Vec<u8> {
+        let mut encoder = OggEncoder::with_comments(bitrate, &sample_comments()).expect("encoder");
         let mut out = Vec::new();
-        for _ in 0..50 {
-            out.extend(encoder.encode(&block).expect("encode"));
+        for block in blocks {
+            out.extend(encoder.encode(block).expect("encode"));
         }
         out.extend(encoder.finalize().expect("finalize"));
+        out
+    }
+
+    fn decode_opus(bytes: &[u8]) -> Vec<i16> {
+        let mut reader = PacketReader::new(Cursor::new(bytes));
+        let mut decoder =
+            Decoder::new(shiguredo_opus::DecoderConfig::new(SAMPLE_RATE, 2)).expect("decoder");
+        let mut samples = Vec::new();
+        while let Some(packet) = reader.read_packet().expect("read packet") {
+            if packet.data.starts_with(b"Opus") {
+                continue; // OpusHead / OpusTags
+            }
+            samples.extend(decoder.decode(&packet.data).expect("decode"));
+        }
+        samples
+    }
+
+    fn mean_abs(samples: &[i16]) -> f64 {
+        samples.iter().map(|&s| f64::from(s).abs()).sum::<f64>() / samples.len() as f64
+    }
+
+    /// Parses each page's `(granule position, header-type byte)`. The
+    /// header-type byte is at byte offset 5 (`0x02` BOS, `0x04` EOS).
+    fn page_headers(bytes: &[u8]) -> Vec<(u64, u8)> {
+        let mut out = Vec::new();
+        let mut pos = 0;
+        while pos + 27 <= bytes.len() {
+            if bytes[pos..pos + 4] != *b"OggS" {
+                break;
+            }
+            let seg_count = bytes[pos + 26] as usize;
+            let page_len = 27
+                + seg_count
+                + bytes[pos + 27..pos + 27 + seg_count]
+                    .iter()
+                    .map(|&n| u32::from(n))
+                    .sum::<u32>() as usize;
+            if pos + 27 + seg_count > bytes.len() {
+                break;
+            }
+            let granule = u64::from_le_bytes(bytes[pos + 6..pos + 14].try_into().unwrap());
+            out.push((granule, bytes[pos + 5]));
+            pos += page_len;
+        }
+        out
+    }
+
+    /// Reads the `pre_skip` field from the `OpusHead` in the stream.
+    fn head_pre_skip(bytes: &[u8]) -> u16 {
+        let head_pos = bytes
+            .windows(8)
+            .position(|w| w == b"OpusHead")
+            .expect("opus head");
+        u16::from_le_bytes([bytes[head_pos + 10], bytes[head_pos + 11]])
+    }
+
+    #[test]
+    fn encodes_ogg_with_valid_header_and_comments() {
+        let block = sine_stereo(960, 440.0);
+        // ~1 second of audio in 960-frame blocks (20 ms @ 48 kHz).
+        let out = encode_blocks(&vec![block; 50], Some(64_000));
 
         assert!(out.len() > 100, "expected non-trivial OGG payload");
         assert_eq!(&out[..4], b"OggS", "OGG capture pattern");
         let as_str = String::from_utf8_lossy(&out);
+        assert!(as_str.contains("OpusHead"));
+        assert!(as_str.contains("OpusTags"));
         assert!(as_str.contains("ARTIST=Koe") || as_str.contains("Koe"));
-        assert!(as_str.contains("vorbis"));
-        assert!(as_str.contains("koe v0.0.0") || as_str.contains("ENCODER"));
-        assert!(as_str.contains("microphone") || as_str.contains("KOE_SOURCE"));
+        assert!(as_str.contains("ENCODER=koe v0.0.0"));
+        assert!(as_str.contains("KOE_SOURCE="));
+
+        // OpusHead fields: version 1, stereo, non-zero pre-skip, rate.
+        let head_pos = out
+            .windows(8)
+            .position(|w| w == b"OpusHead")
+            .expect("opus head");
+        let head = &out[head_pos..head_pos + 19];
+        assert_eq!(head[8], 1);
+        assert_eq!(head[9], 2);
+        let pre_skip = head_pre_skip(&out);
+        assert!(pre_skip > 0, "pre-skip should be non-zero");
+        assert_eq!(
+            u32::from_le_bytes([head[12], head[13], head[14], head[15]]),
+            SAMPLE_RATE
+        );
+    }
+
+    #[test]
+    fn round_trip_decodes_to_audible_audio() {
+        let block = sine_stereo(960, 440.0);
+        let out = encode_blocks(&vec![block; 50], Some(64_000));
+        let decoded = decode_opus(&out);
+        assert!(
+            decoded.len() >= SAMPLE_RATE as usize,
+            "expected ~1s of samples"
+        );
+        assert!(
+            mean_abs(&decoded) > 500.0,
+            "expected audible output, mean_abs={:.0}",
+            mean_abs(&decoded)
+        );
+    }
+
+    #[test]
+    fn default_bitrate_and_explicit_bitrate_both_decode() {
+        for bitrate in [None, Some(24_000), Some(128_000)] {
+            let out = encode_blocks(&vec![sine_stereo(960, 440.0); 10], bitrate);
+            let decoded = decode_opus(&out);
+            assert!(decoded.len() >= 960 * 10, "expected ~10 frames of samples");
+            // Same audible bar as the 1-second round-trip: proves the chosen
+            // bitrate actually carries the tone rather than near-silence.
+            assert!(
+                mean_abs(&decoded) > 500.0,
+                "bitrate {bitrate:?} decoded to near-silence, mean_abs={:.0}",
+                mean_abs(&decoded)
+            );
+        }
     }
 
     #[test]
@@ -384,11 +615,11 @@ mod tests {
         // far below real time even on modest hardware.
         const MAX_ENCODE_BLOCK_US: u128 = 1_000;
 
-        let comments = OggComments::for_session(&AudioSourceConfig::Microphone, "en-US");
-        let mut encoder = OggEncoder::with_comments(0.4, &comments).expect("encoder");
+        let comments = sample_comments();
+        let mut encoder = OggEncoder::with_comments(None, &comments).expect("encoder");
         let block = sine_stereo(960, 440.0);
 
-        // Warm up (headers + codebook).
+        // Warm up (headers + initial frame).
         let _ = encoder.encode(&block).expect("warmup");
 
         // Measure per-block latency and assert on the median (odd sample count
@@ -413,20 +644,98 @@ mod tests {
     }
 
     #[test]
-    fn rejects_out_of_range_quality() {
-        let comments = OggComments::for_session(&AudioSourceConfig::Microphone, "ja-JP");
-        match OggEncoder::with_comments(1.5, &comments) {
-            Ok(_) => panic!("expected quality error"),
-            Err(err) => assert!(err.to_string().contains("quality")),
-        }
+    fn rejects_odd_pcm_length() {
+        let comments = sample_comments();
+        let mut encoder = OggEncoder::with_comments(None, &comments).expect("encoder");
+        let err = encoder.encode(&[0.0]).expect_err("odd");
+        assert!(err.to_string().contains("multiple"));
     }
 
     #[test]
-    fn rejects_odd_pcm_length() {
-        let comments = OggComments::for_session(&AudioSourceConfig::Microphone, "en-US");
-        let mut encoder = OggEncoder::with_comments(0.4, &comments).expect("encoder");
-        let err = encoder.encode(&[0.0]).expect_err("odd");
-        assert!(err.to_string().contains("multiple"));
+    fn f32_to_i16_scales_and_clamps() {
+        assert_eq!(f32_to_i16(0.0), 0);
+        assert_eq!(f32_to_i16(0.5), 16_384);
+        assert_eq!(f32_to_i16(-0.5), -16_384);
+        // Out-of-range input clamps rather than wrapping.
+        assert_eq!(f32_to_i16(1.0), 32_767);
+        assert_eq!(f32_to_i16(-1.0), -32_768);
+        assert_eq!(f32_to_i16(2.0), 32_767);
+        assert_eq!(f32_to_i16(-2.0), -32_768);
+    }
+
+    #[test]
+    fn encode_after_finalize_is_rejected() {
+        let comments = sample_comments();
+        let mut encoder = OggEncoder::with_comments(None, &comments).expect("encoder");
+        let _ = encoder.finalize().expect("finalize");
+        let err = encoder
+            .encode(&[0.0, 0.0])
+            .expect_err("encode after finalize must fail");
+        assert!(err.to_string().contains("already finalized"));
+    }
+
+    #[test]
+    fn double_finalize_is_idempotent() {
+        let comments = sample_comments();
+        let mut encoder = OggEncoder::with_comments(None, &comments).expect("encoder");
+        let _ = encoder.encode(&sine_stereo(960, 440.0)).expect("encode");
+        let first = encoder.finalize().expect("first finalize");
+        assert!(!first.is_empty(), "first finalize emits the stream trailer");
+        // A regression that wrote an extra trailer would surface here as a
+        // non-empty second finalize.
+        let second = encoder.finalize().expect("second finalize");
+        assert!(second.is_empty(), "double-finalize must emit no bytes");
+    }
+
+    #[test]
+    fn empty_frame_encode_is_a_noop() {
+        let comments = sample_comments();
+        let mut encoder = OggEncoder::with_comments(None, &comments).expect("encoder");
+        let _ = encoder.encode(&sine_stereo(960, 440.0)).expect("encode");
+        // After a draining encode the sink is empty; an empty chunk adds nothing.
+        assert!(encoder.encode(&[]).expect("empty encode").is_empty());
+    }
+
+    #[test]
+    fn empty_recording_still_yields_valid_stream() {
+        // No data chunks: finalize must emit header + EOS silence page.
+        let out = encode_blocks(&[], None);
+        assert_eq!(&out[..4], b"OggS");
+        let decoded = decode_opus(&out);
+        assert!(!decoded.is_empty());
+        // The single frame must be (near-)silence, not arbitrary PCM.
+        let level = mean_abs(&decoded);
+        assert!(
+            level < 1.0,
+            "empty recording must decode to silence, mean_abs={level}"
+        );
+    }
+
+    #[test]
+    fn granule_positions_increase_by_960() {
+        let block = sine_stereo(960, 440.0);
+        let out = encode_blocks(&vec![block; 50], Some(64_000));
+        let pages = page_headers(&out);
+        // Header page (granule 0) + 50 data pages for one second @ 20 ms.
+        assert!(
+            pages.len() >= 51,
+            "expected >=51 pages, got {}",
+            pages.len()
+        );
+        let granules = pages.iter().map(|&(g, _)| g).collect::<Vec<_>>();
+        // First page is the identification header (BOS); last carries EOS.
+        assert_ne!(pages[0].1 & 0x02, 0, "header page must set BOS");
+        assert_ne!(
+            pages.last().expect("pages").1 & 0x04,
+            0,
+            "last page must set EOS"
+        );
+        // First data granule = pre_skip + one 20 ms frame in 48 kHz units.
+        let pre_skip = u64::from(head_pre_skip(&out));
+        assert_eq!(granules[1], pre_skip + FRAME_SAMPLES_48K);
+        for pair in granules[1..].windows(2) {
+            assert_eq!(pair[1] - pair[0], 960, "granule delta should be 960");
+        }
     }
 
     #[test]
