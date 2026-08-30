@@ -58,11 +58,16 @@ impl CaptureHandle {
 
     #[cfg(target_os = "macos")]
     pub(crate) fn stop_session(&self) {
-        let mut guard = self
-            .session
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(mut session) = guard.take() {
+        // Take the session out before stopping so the blocking join (inside
+        // `CaptureSession::stop`) runs without holding the session mutex.
+        let session = {
+            let mut guard = self
+                .session
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            guard.take()
+        };
+        if let Some(mut session) = session {
             session.stop();
         }
     }
@@ -183,12 +188,59 @@ impl TranscriptionHandle {
 #[derive(uniffi::Object)]
 pub struct MonitorHandle {
     pub(crate) id: u64,
+    #[cfg(target_os = "macos")]
+    session: Mutex<Option<koe_capture::PlaybackSession>>,
 }
 
 impl MonitorHandle {
     pub(crate) fn new() -> Self {
         Self {
             id: next_handle_id(),
+            #[cfg(target_os = "macos")]
+            session: Mutex::new(None),
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl MonitorHandle {
+    pub(crate) fn attach_session(
+        &self,
+        session: koe_capture::PlaybackSession,
+    ) {
+        *self
+            .session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(session);
+    }
+
+    fn session(&self) -> std::sync::MutexGuard<'_, Option<koe_capture::PlaybackSession>> {
+        self.session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    pub(crate) fn feed(
+        &self,
+        pcm: &[f32],
+    ) -> Result<(), crate::error::MonitorError> {
+        self.session().as_mut().map_or_else(
+            || Err(crate::error::MonitorError::NotRunning),
+            |session| match session.write(pcm) {
+                Ok(()) => Ok(()),
+                Err(koe_capture::Error::Stopped) => Err(crate::error::MonitorError::NotRunning),
+                Err(e) => Err(crate::error::MonitorError::Internal { msg: e.to_string() }),
+            },
+        )
+    }
+
+    pub(crate) fn stop_session(&self) {
+        let taken = {
+            let mut guard = self.session();
+            guard.take()
+        };
+        if let Some(mut session) = taken {
+            session.stop();
         }
     }
 }
