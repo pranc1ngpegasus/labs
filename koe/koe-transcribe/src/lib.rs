@@ -52,6 +52,9 @@ const FINALIZE_WAIT: Duration = Duration::from_secs(20);
 #[cfg(target_os = "macos")]
 const RUNLOOP_STEP: f64 = 0.05;
 
+/// Help text for [`Error::OnDeviceUnavailable`] (used only on macOS where a
+/// session can actually be requested).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const ON_DEVICE_HELP: &str = "enable Dictation / on-device speech models in System Settings → Apple Intelligence & \
      Siri → Dictation, or use engine=Network";
 
@@ -160,6 +163,10 @@ pub fn supported_locales() -> Vec<String> {
 }
 
 /// Tags the Speech framework's locale identifiers into BCP-47 hyphen form.
+///
+/// Only used by the macOS locale walk; kept on other targets so the
+/// normalization tests can run.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[must_use]
 fn to_bcp47(identifier: &str) -> String {
     identifier.replace('_', "-")
@@ -168,6 +175,10 @@ fn to_bcp47(identifier: &str) -> String {
 /// Whether the recognizer reported a system-level engine failure (for
 /// example "Siri and Dictation are disabled") that a retry with network
 /// recognition can recover from.
+///
+/// Only used by the macOS probe path; on other targets it stays (dead) code
+/// so the pure-logic tests can still exercise it.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[must_use]
 fn is_recoverable_engine_error(message: &str) -> bool {
     let lower = message.to_ascii_lowercase();
@@ -181,6 +192,10 @@ fn is_recoverable_engine_error(message: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Verdict of a short on-device recognizer probe.
+///
+/// Produced by the macOS probe path; kept alive on other targets so the
+/// classification tests below can run.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ProbeVerdict {
     /// The recognizer produced a result (on-device works).
@@ -194,6 +209,7 @@ enum ProbeVerdict {
 }
 
 /// Maps a probe verdict to an engine choice (pure, testable).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[must_use]
 fn classify_probe(verdict: ProbeVerdict) -> Engine {
     match verdict {
@@ -281,6 +297,10 @@ fn probe_native(locale: &str) -> Engine {
 }
 
 /// The concrete engine a session will run with.
+///
+/// Resolved by [`resolve_engine`]; only constructed on macOS, but kept on
+/// other targets so the resolution tests can run.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ResolvedEngine {
     OnDevice,
@@ -288,6 +308,7 @@ enum ResolvedEngine {
 }
 
 /// Resolves a requested engine against a probe verdict (pure, testable).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn resolve_engine(
     requested: RequestedEngine,
     probed: Engine,
