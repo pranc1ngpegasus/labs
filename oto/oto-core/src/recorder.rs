@@ -7,7 +7,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use oto_capture::CaptureSession;
+use oto_capture::{CaptureSession, SystemCaptureSession};
 use oto_encode::{
     AudioEncoder, Converter, EncoderSpec, EncoderStats, Error as EncodeError, OggOpusEncoder, Tags,
     WavEncoder, convert::opus_target_channels, convert::opus_target_rate,
@@ -25,6 +25,15 @@ pub enum OutputFormat {
     OggOpus,
 }
 
+/// The audio source a recording captures from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AudioSource {
+    /// A physical input device (microphone).
+    Microphone,
+    /// The system's output mix (loopback); only on macOS for now.
+    System,
+}
+
 /// Configuration for a recording session.
 #[derive(Debug, Clone)]
 pub struct RecordingConfig {
@@ -32,6 +41,8 @@ pub struct RecordingConfig {
     pub output: PathBuf,
     /// Output container format.
     pub format: OutputFormat,
+    /// Audio source to record from (microphone or system audio).
+    pub source: AudioSource,
     /// Resolved device `unique_id`, or `None` for the default input.
     pub device_id: Option<String>,
     /// Requested channel count (1 or 2); the device's actual count is used.
@@ -64,13 +75,42 @@ pub enum RecordingError {
 /// Created via [`RecordingSession::start`], then stopped via [`Self::stop`],
 /// which gracefully finalizes the output and returns statistics.
 pub struct RecordingSession {
-    capture: CaptureSession,
+    source: SourceSession,
     /// Held to close the channel on stop (the consumer reads the receiver).
     sender: std::sync::mpsc::SyncSender<oto_capture::AudioFrameOwned>,
     /// Backpressure drop counter shared with the capture callback.
     dropped: Arc<AtomicUsize>,
     /// The consumer thread, yielding stats once the channel closes.
     consumer: std::thread::JoinHandle<Result<EncoderStats, RecordingError>>,
+}
+
+/// A running capture source: either a microphone or the system output mix.
+enum SourceSession {
+    Mic(CaptureSession),
+    System(SystemCaptureSession),
+}
+
+impl SourceSession {
+    fn sample_rate(&self) -> i32 {
+        match self {
+            Self::Mic(c) => c.sample_rate(),
+            Self::System(c) => c.sample_rate(),
+        }
+    }
+
+    fn channels(&self) -> i32 {
+        match self {
+            Self::Mic(c) => c.channels(),
+            Self::System(c) => c.channels(),
+        }
+    }
+
+    fn stop(&mut self) {
+        match self {
+            Self::Mic(c) => c.stop(),
+            Self::System(c) => c.stop(),
+        }
+    }
 }
 
 impl RecordingSession {
@@ -91,16 +131,22 @@ impl RecordingSession {
         let (sender, receiver) = std::sync::mpsc::sync_channel::<oto_capture::AudioFrameOwned>(32);
         let dropped = Arc::new(AtomicUsize::new(0));
 
-        let capture = CaptureSession::start(
-            config.device_id.clone(),
-            i32::from(config.channels),
-            sender.clone(),
-            Arc::clone(&dropped),
-        )?;
+        let source = match config.source {
+            AudioSource::Microphone => SourceSession::Mic(CaptureSession::start(
+                config.device_id.clone(),
+                i32::from(config.channels),
+                sender.clone(),
+                Arc::clone(&dropped),
+            )?),
+            AudioSource::System => SourceSession::System(SystemCaptureSession::start(
+                sender.clone(),
+                Arc::clone(&dropped),
+            )?),
+        };
 
-        let actual_rate = u32::try_from(capture.sample_rate())
+        let actual_rate = u32::try_from(source.sample_rate())
             .map_err(|_| EncodeError::Unsupported("sample rate exceeds u32".to_owned()))?;
-        let actual_channels = u8::try_from(capture.channels())
+        let actual_channels = u8::try_from(source.channels())
             .map_err(|_| EncodeError::Unsupported("channel count exceeds u8".to_owned()))?;
         let (converter, encoder): (Option<Converter>, Box<dyn AudioEncoder>) = match config.format {
             OutputFormat::Wav => (
@@ -135,7 +181,7 @@ impl RecordingSession {
             .map_err(|e| EncodeError::Unsupported(format!("spawn consumer: {e}")))?;
 
         Ok(Self {
-            capture,
+            source,
             sender,
             dropped,
             consumer,
@@ -145,10 +191,10 @@ impl RecordingSession {
     /// The encoder's output spec (rate/channels) for the progress display.
     #[must_use]
     pub fn spec(&self) -> EncoderSpec {
-        let rate = u32::try_from(self.capture.sample_rate()).unwrap_or(0);
+        let rate = u32::try_from(self.source.sample_rate()).unwrap_or(0);
         EncoderSpec {
             sample_rate: rate,
-            channels: u8::try_from(self.capture.channels()).unwrap_or(0),
+            channels: u8::try_from(self.source.channels()).unwrap_or(0),
         }
     }
 
@@ -160,12 +206,12 @@ impl RecordingSession {
     ///
     /// Returns [`RecordingError`] if the consumer failed or its thread panicked.
     pub fn stop(self) -> Result<EncoderStats, RecordingError> {
-        let mut capture = self.capture;
-        capture.stop();
-        // Dropping the capture destroys the audio session and its callback,
+        let mut source = self.source;
+        source.stop();
+        // Dropping the source destroys the audio session and its callback,
         // which holds the last sender clone. Only then does the channel close
         // so the consumer can drain, flush, and finalize.
-        drop(capture);
+        drop(source);
         drop(self.sender);
         let mut stats = self
             .consumer
