@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use koe_core::{
     AudioSourceConfig, TranscriptFormat, TranscriptMeta, TranscriptionCallback,
@@ -12,7 +12,7 @@ use koe_core::{
 use usage::Args;
 
 use super::Run;
-use super::decode::{CANONICAL_SAMPLE_RATE_HZ, DecodedAudioInfo, chunk_pcm, decode_to_canonical};
+use super::decode::{CANONICAL_SAMPLE_RATE_HZ, DecodedAudioInfo, decode_to_canonical};
 use super::duration::parse_duration;
 use super::{parse_speech_engine, parse_transcript_format};
 use crate::MainError;
@@ -21,6 +21,15 @@ use crate::config::KoeConfig;
 /// Speech framework recognition tasks are bounded; keep each request short
 /// enough that finalization can reliably produce a final result.
 const RECOGNITION_WINDOW_MS: u64 = 50_000;
+
+/// Feed granularity: `SFSpeechAudioBufferRecognitionRequest` consumes audio at
+/// (near) real-time, so appending the whole window in one burst then calling
+/// endAudio finalizes before the recognizer has ingested anything ("No speech
+/// detected"). Feed ~1s chunks and pause briefly between them so the streaming
+/// recognizer keeps up; the pause is ~2% of the audio duration.
+const FEED_CHUNK_FRAMES: usize = CANONICAL_SAMPLE_RATE_HZ as usize;
+/// Per-1s-chunk settle time before the recognizer ingests the next chunk.
+const FEED_PACE: Duration = Duration::from_millis(20);
 
 /// Transcribe an existing audio file without recording.
 #[derive(Debug, Args)]
@@ -185,12 +194,17 @@ fn run_transcription(prepared: &Prepared) -> Result<(), MainError> {
             other => MainError::Internal(format!("start transcription: {other}")),
         })?;
 
-        for chunk in chunk_pcm(window) {
+        // Feed in ~1s chunks with a small pause so the streaming recognizer
+        // ingests each chunk (a burst-then-endAudio finalizes too early).
+        for chunk in window.chunks(FEED_CHUNK_FRAMES * 2) {
             feed_transcription_audio(Arc::clone(&handle), chunk.to_vec());
             fed_ms = fed_ms
                 .saturating_add(u64::try_from(chunk.len()).unwrap_or(0) / samples_per_ms.max(1));
             report_progress(fed_ms.min(total_ms), total_ms, &partial);
+            std::thread::sleep(FEED_PACE);
         }
+        // Let the recognizer ingest the final tail before endAudio.
+        std::thread::sleep(FEED_PACE);
         finalize_transcription(handle);
 
         if let Some(err) = errors.lock().ok().and_then(|guard| guard.clone()) {
