@@ -35,8 +35,14 @@ const STATUS_INTERVAL: Duration = Duration::from_millis(100);
 #[derive(Debug, Args)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct RecordArgs {
-    /// Audio source: `system`, `mic`, or `both` (default: system).
-    #[usage(long)]
+    /// Audio source: `system`, `mic`, or `both`.
+    ///
+    /// Required unless `--app-id`/`--pid` supply the target (which implies
+    /// `system`) or one of `--list-sources`/`--list-locales` is given.
+    #[usage(
+        long,
+        required_unless("--list-sources", "--list-locales", "--app-id", "--pid")
+    )]
     pub source: Option<String>,
 
     /// Capture system audio from an app bundle id.
@@ -283,11 +289,10 @@ fn merge_record_options(
     }
 
     Ok(MergedRecordOptions {
-        source: config::coalesce_owned(
-            args.source.clone(),
-            file.defaults.source.as_deref(),
-            builtin::SOURCE,
-        ),
+        source: args
+            .source
+            .clone()
+            .unwrap_or_else(|| builtin::SOURCE.to_owned()),
         format: config::coalesce_owned(
             args.format.clone(),
             file.defaults.format.as_deref(),
@@ -752,11 +757,52 @@ mod tests {
         }
     }
 
+    fn argv_record<'a>(args: &[&'a str]) -> Vec<&'a OsStr> {
+        ["koe", "record"]
+            .into_iter()
+            .chain(args.iter().copied())
+            .map(OsStr::new)
+            .collect()
+    }
+
     #[test]
     fn parses_list_sources_without_output() {
         let args = parse_record(&["--list-sources"]);
         assert!(args.list_sources);
         assert!(args.output.is_none());
+    }
+
+    #[test]
+    fn rejects_missing_source_without_app_id_or_pid() {
+        // No --source / --app-id / --pid, but an output is given.
+        let result = TestCli::try_parse_from(&argv_record(&["-o", "out.ogg"]));
+        assert!(result.is_err(), "expected a parse error for missing source");
+    }
+
+    #[test]
+    fn accepts_app_id_without_source() {
+        // --app-id implies `system`, so --source is not required.
+        let args = parse_record(&["--app-id", "com.google.Chrome", "-o", "out.ogg"]);
+        assert!(args.source.is_none());
+        assert_eq!(args.app_id.as_deref(), Some("com.google.Chrome"));
+    }
+
+    #[test]
+    fn accepts_pid_without_source() {
+        let args = parse_record(&["--pid", "4242", "-o", "out.ogg"]);
+        assert!(args.source.is_none());
+        assert_eq!(args.pid, Some(4242));
+    }
+
+    #[test]
+    fn app_id_without_source_resolves_to_app_audio() {
+        // Without an explicit --source, --app-id implies `system` capture.
+        let args = parse_record(&["--app-id", "com.google.Chrome", "-o", "out.ogg"]);
+        let prepared = prepare_session(&args, &KoeConfig::default()).expect("prepare");
+        assert!(matches!(
+            prepared.config.source,
+            AudioSourceConfig::AppAudio { .. }
+        ));
     }
 
     #[test]
