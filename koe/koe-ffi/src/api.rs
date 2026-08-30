@@ -165,7 +165,6 @@ const fn to_requested_engine(engine: SpeechEngine) -> koe_transcribe::RequestedE
 }
 
 #[cfg(target_os = "macos")]
-#[allow(clippy::needless_pass_by_value)]
 fn start_transcription_native(
     handle: &Arc<TranscriptionHandle>,
     engine: SpeechEngine,
