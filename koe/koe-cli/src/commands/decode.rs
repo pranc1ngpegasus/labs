@@ -23,8 +23,6 @@ use crate::MainError;
 pub const CANONICAL_SAMPLE_RATE_HZ: u32 = 48_000;
 /// Target channel count (interleaved L/R).
 pub const CANONICAL_CHANNELS: usize = 2;
-/// Frames per feed chunk (~100 ms).
-pub const CHUNK_FRAMES: usize = CANONICAL_SAMPLE_RATE_HZ as usize / 10;
 
 /// Metadata about a decoded (and optionally windowed) audio stream.
 #[derive(Debug, Clone, Copy)]
@@ -411,12 +409,6 @@ fn resample_linear(
         }
     }
     out
-}
-
-/// Split canonical PCM into ~100 ms feed chunks.
-pub fn chunk_pcm(pcm: &[f32]) -> impl Iterator<Item = &[f32]> {
-    let chunk_samples = CHUNK_FRAMES * CANONICAL_CHANNELS;
-    pcm.chunks(chunk_samples)
 }
 
 #[cfg(test)]

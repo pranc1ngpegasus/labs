@@ -18,8 +18,8 @@
 
 #include "speech.h"
 
+/// Incoming stream rate: the pipeline always feeds 48 kHz interleaved stereo.
 static const double kKoeSampleRate = 48000.0;
-static const AVAudioChannelCount kKoeChannels = 2;
 
 // ---------------------------------------------------------------------------
 // Probe
@@ -386,33 +386,75 @@ int koe_speech_feed(struct KoeSpeechSession* session, const float* pcm,
     return -1;
   }
 
-  AVAudioFrameCount frame_count = (AVAudioFrameCount)frames;
-  AVAudioFormat* format = [[AVAudioFormat alloc]
-      initWithCommonFormat:AVAudioPCMFormatFloat32
-                sampleRate:kKoeSampleRate
-                  channels:kKoeChannels
-               interleaved:NO];
-  if (format == nil) {
+  AVAudioFormat* fmt = request.nativeAudioFormat;
+  const AudioStreamBasicDescription* sd = fmt != nil ? fmt.streamDescription : NULL;
+  if (fmt == nil || sd == NULL || sd->mFormatID != kAudioFormatLinearPCM) {
+    pthread_mutex_unlock(&self->feed_lock);
+    return -1;
+  }
+  const double target_rate = sd->mSampleRate;
+  const UInt32 ch = sd->mChannelsPerFrame > 0 ? sd->mChannelsPerFrame : 1;
+  const UInt32 bits = sd->mBitsPerChannel;
+  const BOOL is_float = (sd->mFormatFlags & kAudioFormatFlagIsFloat) != 0;
+  const BOOL interleaved = fmt.isInterleaved;
+  if ((!is_float && bits != 16) || (is_float && bits != 32 && bits != 64)) {
+    // Unsupported native sample format for this recognizer.
+    pthread_mutex_unlock(&self->feed_lock);
+    return -1;
+  }
+  const size_t bytes_per_sample = bits / 8;
+
+  // Overlapping linear resample of the incoming 48 kHz interleaved stereo
+  // stream into the recognizer's native format.
+  size_t out_frames = (size_t)llround((double)frames * target_rate / kKoeSampleRate);
+  if (out_frames == 0) {
     pthread_mutex_unlock(&self->feed_lock);
     return -1;
   }
   AVAudioPCMBuffer* buffer =
-      [[AVAudioPCMBuffer alloc] initWithPCMFormat:format frameCapacity:frame_count];
+      [[AVAudioPCMBuffer alloc] initWithPCMFormat:fmt frameCapacity:out_frames];
   if (buffer == nil) {
     pthread_mutex_unlock(&self->feed_lock);
     return -1;
   }
-  buffer.frameLength = frame_count;
+  buffer.frameLength = out_frames;
 
-  float* const* channels = (float* const*)buffer.floatChannelData;
-  if (channels == NULL) {
+  AudioBufferList* abl = buffer.mutableAudioBufferList;
+  if (abl == NULL) {
     pthread_mutex_unlock(&self->feed_lock);
     return -1;
   }
-  for (AVAudioFrameCount i = 0; i < frame_count; i++) {
-    channels[0][i] = pcm[i * 2];
-    channels[1][i] = pcm[i * 2 + 1];
+  const UInt32 data_channels = interleaved ? 1 : ch;
+  for (UInt32 b = 0; b < abl->mNumberBuffers && b < data_channels; b++) {
+    abl->mBuffers[b].mNumberChannels = interleaved ? ch : 1;
+    abl->mBuffers[b].mDataByteSize = (UInt32)(out_frames * data_channels * bytes_per_sample);
   }
+
+  for (size_t f = 0; f < out_frames; f++) {
+    // Resample + mix one output frame from the 48 kHz interleaved stereo input.
+    double src = (double)f * kKoeSampleRate / target_rate;
+    size_t i0 = (size_t)src;
+    size_t i1 = i0 + 1 < frames ? i0 + 1 : frames - 1;
+    double frac = src - (double)i0;
+    float L = (float)(pcm[i0 * 2] + (pcm[i1 * 2] - pcm[i0 * 2]) * frac);
+    float R = (float)(pcm[i0 * 2 + 1] + (pcm[i1 * 2 + 1] - pcm[i0 * 2 + 1]) * frac);
+    float mono = (L + R) * 0.5f;
+
+    for (UInt32 c = 0; c < ch; c++) {
+      unsigned char* dst = interleaved
+          ? (unsigned char*)abl->mBuffers[0].mData + (f * ch + c) * bytes_per_sample
+          : (unsigned char*)abl->mBuffers[c].mData + f * bytes_per_sample;
+      float v = (ch == 1) ? mono : (c == 0 ? L : R);
+      if (is_float && bits == 32) {
+        *(float*)dst = v;
+      } else if (is_float && bits == 64) {
+        *(double*)dst = (double)v;
+      } else {
+        *(int16_t*)dst = (int16_t)(v * 32767.0f);
+      }
+    }
+  }
+
   [request appendAudioPCMBuffer:buffer];
   pthread_mutex_unlock(&self->feed_lock);
   return 0;

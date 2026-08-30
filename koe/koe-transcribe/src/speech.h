@@ -117,9 +117,10 @@ int koe_speech_create(const char* locale, int engine, KoeSpeechCallback callback
 // the session. A no-op on NULL.
 void koe_speech_destroy(struct KoeSpeechSession* session);
 
-// Appends `frames` interleaved f32 stereo frames (48 kHz) to the session's
-// audio buffer. Returns 0 on success, nonzero on invalid input or after the
-// session has been finished/destroyed.
+// Appends `frames` interleaved f32 stereo frames (48 kHz) to the session.
+// The frames are resampled/mixed into the recognizer's nativeAudioFormat.
+// Returns 0 on success, nonzero on invalid input or after the session has
+// been finished/destroyed.
 int koe_speech_feed(struct KoeSpeechSession* session, const float* pcm, size_t frames);
 
 // Signals end-of-audio and requests the final result. The recognition callback
