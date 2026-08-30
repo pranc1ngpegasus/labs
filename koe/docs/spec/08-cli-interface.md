@@ -43,7 +43,8 @@ The primary command. Starts capturing, transcribing, and writing output.
 koe record [OPTIONS] --output <PATH>
 
 Source Selection (mutually exclusive groups):
-  --source <SOURCE>              system, mic, or both (default: system)
+  --source <SOURCE>              system, mic, or both (required unless
+                                 --app-id/--pid are given, which imply system)
   --app-id <BUNDLE_ID>           Capture audio from a specific app
   --pid <PID>                    Capture audio from a process by PID
   --display <DISPLAY_ID>         Capture from a specific display
