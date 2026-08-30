@@ -14,7 +14,7 @@ pub mod ogg_opus;
 pub mod wav;
 
 pub use convert::{ConvertError, Converter};
-pub use ogg_opus::{OggOpusEncoder, Tags};
+pub use ogg_opus::{Comment, OggEncoder, OggOpusEncoder, Tags};
 pub use wav::WavEncoder;
 
 /// PCM sample format delivered by the capture device.

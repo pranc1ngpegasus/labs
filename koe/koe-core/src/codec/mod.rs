@@ -5,7 +5,7 @@ mod ogg;
 use koe_ffi::OutputFormat;
 use thiserror::Error;
 
-pub use ogg::{OggComments, OggEncoder};
+pub use ogg::OggComments;
 
 /// Errors raised while encoding audio.
 #[derive(Debug, Error)]
@@ -52,11 +52,37 @@ pub fn create_encoder(
     match format {
         OutputFormat::Ogg { bitrate_bps } => {
             let comments = comments.cloned().unwrap_or_else(OggComments::basic);
-            Ok(Box::new(OggEncoder::with_comments(
-                *bitrate_bps,
-                &comments,
-            )?))
+            let encoder = oto_encode::OggEncoder::new(48_000, 2, *bitrate_bps, &comments.as_comments())
+                .map_err(map_encode_error)?;
+            Ok(Box::new(OggEncode(encoder)))
         },
+    }
+}
+
+/// Adapter exposing [`oto_encode::OggEncoder`] through koe's [`AudioEncoder`].
+struct OggEncode(oto_encode::OggEncoder);
+
+impl AudioEncoder for OggEncode {
+    fn encode(
+        &mut self,
+        pcm: &[f32],
+    ) -> Result<Vec<u8>, CodecError> {
+        self.0.encode(pcm).map_err(map_encode_error)
+    }
+
+    fn finalize(&mut self) -> Result<Vec<u8>, CodecError> {
+        self.0.finalize().map_err(map_encode_error)
+    }
+}
+
+/// Maps an [`oto_encode::Error`] onto koe's [`CodecError`].
+fn map_encode_error(err: oto_encode::Error) -> CodecError {
+    match err {
+        oto_encode::Error::Io(e) => CodecError::Io(e),
+        oto_encode::Error::Unsupported(msg) | oto_encode::Error::Codec(msg) => {
+            CodecError::Encoder(msg)
+        },
+        oto_encode::Error::Convert(e) => CodecError::Encoder(e.to_string()),
     }
 }
 

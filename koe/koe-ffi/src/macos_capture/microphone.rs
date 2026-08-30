@@ -1,4 +1,4 @@
-//! Microphone capture via [`koe_capture`] (Shiguredo `AudioCapture`).
+//! Microphone capture via [`oto_capture`] (Shiguredo `AudioCapture`).
 //!
 //! The Shiguredo backend delivers raw S16 frames with the device's actual
 //! channel count / sample rate. This module converts to the koe canonical
@@ -16,7 +16,7 @@ use std::thread::{self, JoinHandle};
 
 use crate::error::CaptureError;
 use crate::handles::CaptureHandle;
-use koe_capture::AudioFrameOwned;
+use oto_capture::AudioFrameOwned;
 
 use super::{CaptureSession, monotonic_ms};
 
@@ -29,7 +29,7 @@ const AGC_MAX_GAIN: f32 = 30.0;
 const AGC_MIN_GAIN: f32 = 1.0;
 
 pub(super) struct MicrophoneSession {
-    capture: Option<koe_capture::CaptureSession>,
+    capture: Option<oto_capture::CaptureSession>,
     worker: Option<JoinHandle<()>>,
     /// Frames dropped by the capture channel under backpressure.
     dropped: Arc<AtomicUsize>,
@@ -69,7 +69,7 @@ impl Drop for MicrophoneSession {
 pub(super) fn start(handle: Arc<CaptureHandle>) -> Result<Box<dyn CaptureSession>, CaptureError> {
     let (tx, rx) = mpsc::sync_channel(CHANNEL_CAPACITY);
     let dropped = Arc::new(AtomicUsize::new(0));
-    let capture = koe_capture::CaptureSession::start(None, 2, tx, Arc::clone(&dropped))
+    let capture = oto_capture::CaptureSession::start(None, 2, tx, Arc::clone(&dropped))
         .map_err(|e| CaptureError::StreamError { msg: e.to_string() })?;
 
     let deliver = Arc::clone(&handle);
@@ -169,7 +169,7 @@ impl SoftAgc {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use koe_capture::AudioFormat;
+    use oto_capture::AudioFormat;
 
     fn s16_frame(
         data: Vec<i16>,

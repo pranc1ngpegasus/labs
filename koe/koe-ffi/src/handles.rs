@@ -189,7 +189,7 @@ impl TranscriptionHandle {
 pub struct MonitorHandle {
     pub(crate) id: u64,
     #[cfg(target_os = "macos")]
-    session: Mutex<Option<koe_capture::PlaybackSession>>,
+    session: Mutex<Option<oto_capture::PlaybackSession>>,
 }
 
 impl MonitorHandle {
@@ -206,7 +206,7 @@ impl MonitorHandle {
 impl MonitorHandle {
     pub(crate) fn attach_session(
         &self,
-        session: koe_capture::PlaybackSession,
+        session: oto_capture::PlaybackSession,
     ) {
         *self
             .session
@@ -214,7 +214,7 @@ impl MonitorHandle {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(session);
     }
 
-    fn session(&self) -> std::sync::MutexGuard<'_, Option<koe_capture::PlaybackSession>> {
+    fn session(&self) -> std::sync::MutexGuard<'_, Option<oto_capture::PlaybackSession>> {
         self.session
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -228,7 +228,7 @@ impl MonitorHandle {
             || Err(crate::error::MonitorError::NotRunning),
             |session| match session.write(pcm) {
                 Ok(()) => Ok(()),
-                Err(koe_capture::Error::Stopped) => Err(crate::error::MonitorError::NotRunning),
+                Err(oto_capture::Error::Stopped) => Err(crate::error::MonitorError::NotRunning),
                 Err(e) => Err(crate::error::MonitorError::Internal { msg: e.to_string() }),
             },
         )

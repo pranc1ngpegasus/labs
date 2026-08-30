@@ -13,12 +13,10 @@ system-audio = []
 
 [dependencies]
 fs2 = { workspace = true }
-getrandom = { workspace = true }
 koe-ffi = { workspace = true }
 log = { workspace = true }
-ogg = { workspace = true }
+oto-encode = { workspace = true }
 serde_json = { workspace = true }
-shiguredo_opus = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = [
   "fs",

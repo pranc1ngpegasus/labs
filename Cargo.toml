@@ -1,6 +1,5 @@
 [workspace]
 members = [
-  "koe/koe-capture",
   "koe/koe-cli",
   "koe/koe-core",
   "koe/koe-ffi",
@@ -38,7 +37,6 @@ getrandom = "0.4.3"
 gitpatch = "0.7.1"
 ignore = "0.4.23"
 jiff = "0.2.18"
-koe-capture = { path = "koe/koe-capture" }
 koe-cli = { path = "koe/koe-cli" }
 koe-core = { path = "koe/koe-core" }
 koe-ffi = { path = "koe/koe-ffi" }
