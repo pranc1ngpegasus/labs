@@ -52,8 +52,9 @@ pub fn create_encoder(
     match format {
         OutputFormat::Ogg { bitrate_bps } => {
             let comments = comments.cloned().unwrap_or_else(OggComments::basic);
-            let encoder = oto_encode::OggEncoder::new(48_000, 2, *bitrate_bps, &comments.as_comments())
-                .map_err(map_encode_error)?;
+            let encoder =
+                oto_encode::OggEncoder::new(48_000, 2, *bitrate_bps, &comments.as_comments())
+                    .map_err(map_encode_error)?;
             Ok(Box::new(OggEncode(encoder)))
         },
     }

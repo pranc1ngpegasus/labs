@@ -782,10 +782,22 @@ mod tests {
 
     fn sample_comments() -> Vec<Comment> {
         vec![
-            Comment { key: "TITLE".into(), value: "k".into() },
-            Comment { key: "ARTIST".into(), value: "a".into() },
-            Comment { key: "ENCODER".into(), value: "koe v0.0.0".into() },
-            Comment { key: "KOE_SOURCE".into(), value: r#"{"type":"microphone"}"#.into() },
+            Comment {
+                key: "TITLE".into(),
+                value: "k".into(),
+            },
+            Comment {
+                key: "ARTIST".into(),
+                value: "a".into(),
+            },
+            Comment {
+                key: "ENCODER".into(),
+                value: "koe v0.0.0".into(),
+            },
+            Comment {
+                key: "KOE_SOURCE".into(),
+                value: r#"{"type":"microphone"}"#.into(),
+            },
         ]
     }
 
@@ -796,8 +808,8 @@ mod tests {
     ) -> Vec<f32> {
         let mut pcm = Vec::with_capacity(frames * usize::from(channels));
         for i in 0..frames {
-            let sample = (2.0 * std::f32::consts::PI * 440.0 * (i as f32 / rate as f32)).sin()
-                * 0.25;
+            let sample =
+                (2.0 * std::f32::consts::PI * 440.0 * (i as f32 / rate as f32)).sin() * 0.25;
             for _ in 0..channels {
                 pcm.push(sample);
             }
@@ -844,7 +856,11 @@ mod tests {
         assert_eq!(&out[..4], b"OggS");
         let decoded = decode_opus_f32(&out);
         assert!(decoded.len() >= 48_000, "~1s of samples");
-        assert!(mean_abs(&decoded) > 500.0, "audible, mean_abs={:.0}", mean_abs(&decoded));
+        assert!(
+            mean_abs(&decoded) > 500.0,
+            "audible, mean_abs={:.0}",
+            mean_abs(&decoded)
+        );
     }
 
     #[test]

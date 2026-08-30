@@ -20,7 +20,6 @@ block2 = { workspace = true }
 dispatch2 = { workspace = true }
 koe-transcribe = { workspace = true }
 objc2 = { workspace = true }
-oto-capture = { workspace = true }
 objc2-app-kit = { workspace = true, features = [
   "NSApplication",
   "NSResponder",
@@ -49,6 +48,7 @@ objc2-screen-capture-kit = { workspace = true, features = [
   "libc",
   "objc2-core-media",
 ] }
+oto-capture = { workspace = true }
 
 [lints]
 workspace = true
