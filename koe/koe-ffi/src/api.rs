@@ -12,8 +12,9 @@ use crate::handles::{CaptureHandle, MonitorHandle, RecordingHandle, Transcriptio
 use crate::native;
 use crate::types::{
     AppInfo, AudioSourceConfig, OutputFormat, Permission, PermissionStatus, SpeechEngine,
-    TranscriptionSegment,
 };
+#[cfg(target_os = "macos")]
+use crate::types::TranscriptionSegment;
 
 #[must_use]
 #[uniffi::export]
