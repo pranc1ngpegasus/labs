@@ -78,12 +78,11 @@ impl std::fmt::Display for AudioDeviceInfo {
 
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum OutputFormat {
-    /// OGG Vorbis, quality-based VBR.
+    /// OGG Opus, bitrate-based encoding (RFC 7845).
     ///
-    /// `quality` is the libvorbis VBR quality in `[-0.1, 1.0]` (the value is
-    /// validated when the encoder is created). `0.4` is Koe's speech-optimized
-    /// default (~128 kbps nominal at 48 kHz stereo).
-    Ogg { quality: f32 },
+    /// `bitrate_bps` is the target bitrate in bits/second. `None` lets libopus
+    /// pick a default for 48 kHz stereo (~120 kbps in Audio mode).
+    Ogg { bitrate_bps: Option<u32> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]

@@ -375,7 +375,7 @@ fn resolve_source(
 
 fn parse_audio_format(value: &str) -> Result<OutputFormat, MainError> {
     match value.trim().to_ascii_lowercase().as_str() {
-        "ogg" => Ok(OutputFormat::Ogg { quality: 0.5 }),
+        "ogg" => Ok(OutputFormat::Ogg { bitrate_bps: None }),
         other => Err(MainError::InvalidArgs(format!(
             "unknown format '{other}' (only 'ogg' is supported)"
         ))),

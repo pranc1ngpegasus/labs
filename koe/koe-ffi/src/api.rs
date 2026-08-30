@@ -73,13 +73,20 @@ pub fn stop_capture(handle: Arc<CaptureHandle>) {
 
 /// Starts a monitoring session that plays clean PCM to the default output.
 ///
-/// The native bridge (`koe-native` `AudioMonitor`) owns the `AudioQueue`. This
-/// stub allocates a handle so `koe-core` can exercise the full start/feed/stop
-/// path on all platforms.
+/// On macOS this backs onto `koe-capture`'s `AudioPlayback` (Shiguredo); on
+/// other platforms it allocates an inert handle so `koe-core` can exercise the
+/// start/feed/stop path on all targets.
 #[allow(clippy::missing_errors_doc)]
 #[uniffi::export]
 pub fn start_monitor() -> Result<Arc<MonitorHandle>, MonitorError> {
-    Ok(Arc::new(MonitorHandle::new()))
+    let handle = Arc::new(MonitorHandle::new());
+    #[cfg(target_os = "macos")]
+    {
+        let session = koe_capture::PlaybackSession::start()
+            .map_err(|e| MonitorError::CreateFailed { msg: e.to_string() })?;
+        handle.attach_session(session);
+    }
+    Ok(handle)
 }
 
 /// Enqueues interleaved stereo Float32 PCM for monitoring playback.
@@ -94,15 +101,29 @@ pub fn feed_monitor(
     handle: Arc<MonitorHandle>,
     pcm: Vec<f32>,
 ) -> Result<(), MonitorError> {
-    let _ = (handle.id, pcm);
-    Ok(())
+    #[cfg(target_os = "macos")]
+    {
+        handle.feed(&pcm)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (handle, pcm);
+        Ok(())
+    }
 }
 
-/// Stops monitoring and releases the native `AudioQueue`.
+/// Stops monitoring and releases the output session.
 #[allow(clippy::needless_pass_by_value)]
 #[uniffi::export]
 pub fn stop_monitor(handle: Arc<MonitorHandle>) {
-    let _ = handle.id;
+    #[cfg(target_os = "macos")]
+    {
+        handle.stop_session();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = handle;
+    }
 }
 
 /// When true, [`start_capture`] returns a handle without a native session
@@ -316,7 +337,7 @@ pub fn stop_recording(handle: Arc<RecordingHandle>) -> Result<RecordingSummary, 
         bytes_written: 0,
         transcript_segment_count: 0,
         dropped_audio_frames: 0,
-        format: OutputFormat::Ogg { quality: 0.5 },
+        format: OutputFormat::Ogg { bitrate_bps: None },
     })
 }
 

@@ -700,7 +700,7 @@ mod tests {
         let output = unique_path("disk");
         let mut config = test_config(&output);
         config.estimated_duration_hours = Some(1_000_000.0);
-        config.audio_format = OutputFormat::Ogg { quality: 0.4 };
+        config.audio_format = OutputFormat::Ogg { bitrate_bps: None };
 
         let Err(err) = RecordingPipeline::start(config).await else {
             panic!("disk full");

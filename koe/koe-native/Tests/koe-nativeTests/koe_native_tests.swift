@@ -41,49 +41,6 @@ final class KoeNativeTests: XCTestCase {
     }
   }
 
-  func testMicrophoneCaptureLifecycle() {
-    // Requires microphone permission. In CI it is not granted (throws
-    // permissionDenied); on dev machines with permission it creates and the
-    // level starts silent.
-    do {
-      let capture = try MicrophoneCapture()
-      XCTAssertNotNil(capture)
-      XCTAssertEqual(capture.currentLevel, 0.0)
-    } catch let error as MicrophoneCapture.Error {
-      guard case .permissionDenied = error else {
-        return XCTFail("unexpected error \(error)")
-      }
-    } catch {
-      XCTFail("unexpected error \(error)")
-    }
-  }
-
-  func testAudioMonitorLifecycle() throws {
-    // Output monitoring does not require microphone permission. Construction
-    // and a silent start/stop round-trip must succeed on CI hosts that expose
-    // a default output device.
-    let monitor = try AudioMonitor()
-    try monitor.start()
-    // One 20 ms stereo block of silence.
-    try monitor.write([Float](repeating: 0, count: 960 * 2))
-    monitor.stop()
-    // Second stop is a no-op.
-    monitor.stop()
-  }
-
-  func testAudioMonitorWriteBeforeStartFails() {
-    do {
-      let monitor = try AudioMonitor()
-      XCTAssertThrowsError(try monitor.write([0.1, -0.1])) { error in
-        guard case AudioMonitor.Error.notRunning = error else {
-          return XCTFail("expected notRunning, got \(error)")
-        }
-      }
-    } catch {
-      XCTFail("unexpected construction error \(error)")
-    }
-  }
-
   func testPermissionCheckerDefaults() {
     let micStatus = PermissionChecker.status(for: .microphone)
     XCTAssertEqual(micStatus, .notDetermined)
@@ -191,7 +148,7 @@ final class KoeNativeTests: XCTestCase {
         source: .microphone,
         outputPath: "",
         locale: "en-US",
-        format: .ogg(quality: 0.5),
+        format: .ogg(bitrateBps: nil),
         enableAec: false,
         comfortNoise: false,
         progressCallback: NoopProgressCallback()
@@ -239,7 +196,7 @@ final class KoeNativeTests: XCTestCase {
       source: .microphone,
       outputPath: "/tmp/koe-test.ogg",
       locale: "en-US",
-      format: .ogg(quality: 0.5),
+      format: .ogg(bitrateBps: nil),
       enableAec: false,
       comfortNoise: false,
       progressCallback: callback

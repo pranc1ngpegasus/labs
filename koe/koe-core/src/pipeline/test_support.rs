@@ -78,7 +78,7 @@ pub fn test_config(output: &Path) -> PipelineConfig {
         transcript_output_path: None,
         locale: "en-US".into(),
         speech_engine: koe_ffi::SpeechEngine::Auto,
-        audio_format: OutputFormat::Ogg { quality: 0.4 },
+        audio_format: OutputFormat::Ogg { bitrate_bps: None },
         transcript_format: TranscriptFormat::Txt,
         enable_aec: false,
         comfort_noise: false,
