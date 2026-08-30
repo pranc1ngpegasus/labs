@@ -376,6 +376,16 @@ struct SessionCtx {
     finished: Mutex<Option<Result<(), String>>>,
 }
 
+// SAFETY: the C session serializes appends with a lock and joins any in-flight
+// callback (and in-progress feed) on destroy, so the raw handle can be shared;
+// the per-session `SessionCtx` is `Send + Sync` (boxed `Send + Sync` closures
+// and a `Mutex`). Mirrors the bound koe's `SpeechSession` relied on for its
+// UniFFI `TranscriptionHandle`.
+#[cfg(target_os = "macos")]
+unsafe impl Send for SpeechAnalyzer {}
+#[cfg(target_os = "macos")]
+unsafe impl Sync for SpeechAnalyzer {}
+
 impl SpeechAnalyzer {
     /// Starts a streaming recognition session for `locale`.
     ///

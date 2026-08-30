@@ -17,14 +17,26 @@
   craneLib, # already overridden with the repo's toolchain (rust-overlay)
   src, # filtered workspace root (must contain Cargo.toml + Cargo.lock)
   cargoArtifacts, # workspace dependency artifacts, built once in the root flake
+  cargoVendorDir, # vendored deps with the shiguredo_opus build.rs patch applied
+  audioNativeBuildInputs, # pkg-config + libclang (bindgen)
+  audioBuildInputs, # libpulse.dev on Linux
+  audioEnv, # LIBCLANG_PATH / OPUS_TARGET / OPUS_PREBUILT_TARBALL
   version ? "0.0.0",
 }:
 let
   # Builds every binary in the workspace (ren/koe/sui once they are members).
   workspaceBuild = craneLib.buildPackage {
-    inherit src version cargoArtifacts;
+    inherit
+      src
+      version
+      cargoArtifacts
+      cargoVendorDir
+      ;
     pname = "labs-workspace";
     strictDeps = true;
+    nativeBuildInputs = audioNativeBuildInputs;
+    buildInputs = audioBuildInputs;
+    env = audioEnv;
     doCheck = false;
   };
 in
