@@ -14,8 +14,6 @@
 use std::ffi::c_void;
 use std::ptr;
 
-use objc2_speech::SFSpeechRecognizer;
-
 use crate::types::AudioDeviceInfo;
 
 type AudioObjectID = u32;
@@ -82,28 +80,15 @@ pub fn default_output_device() -> Option<AudioDeviceInfo> {
     default_device(AUDIO_HARDWARE_PROPERTY_DEFAULT_OUTPUT_DEVICE)
 }
 
-/// BCP-47 locale identifiers from `SFSpeechRecognizer.supportedLocales()`.
+/// BCP-47 locale identifiers supported by the Speech framework, sorted and
+/// deduplicated.
 ///
-/// Identifiers are normalized from Apple's underscore form (`en_US`) to
-/// BCP-47 hyphen form (`en-US`) so they match `--locale` / pipeline
-/// conventions. Sorted for stable CLI / JSON output. Empty if the Speech
-/// framework returns nothing (unusual on a stock macOS install).
+/// Delegated to [`koe_transcribe::supported_locales`], which queries
+/// `SFSpeechRecognizer` and normalizes Apple's underscore identifiers to
+/// BCP-47 hyphen form (`en_US` → `en-US`).
 #[must_use]
 pub fn supported_speech_locales() -> Vec<String> {
-    // SAFETY: class method; returns an immutable set of NSLocale.
-    let locales = unsafe { SFSpeechRecognizer::supportedLocales() };
-    let mut out: Vec<String> = locales
-        .iter()
-        .map(|locale| to_bcp47(&locale.localeIdentifier().to_string()))
-        .collect();
-    out.sort_unstable();
-    out.dedup();
-    out
-}
-
-/// Apple `localeIdentifier` uses `_`; Koe CLI/pipeline locale flags use `-`.
-fn to_bcp47(identifier: &str) -> String {
-    identifier.replace('_', "-")
+    koe_transcribe::supported_locales()
 }
 
 fn default_device(selector: u32) -> Option<AudioDeviceInfo> {
@@ -213,16 +198,4 @@ fn cf_string_to_string(cf_string: CFStringRef) -> Option<String> {
     }
     let nul = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
     std::str::from_utf8(&buf[..nul]).ok().map(str::to_owned)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::to_bcp47;
-
-    #[test]
-    fn to_bcp47_normalizes_underscore() {
-        assert_eq!(to_bcp47("en_US"), "en-US");
-        assert_eq!(to_bcp47("zh_Hans_CN"), "zh-Hans-CN");
-        assert_eq!(to_bcp47("ja-JP"), "ja-JP");
-    }
 }

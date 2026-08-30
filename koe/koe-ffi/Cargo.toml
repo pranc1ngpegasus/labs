@@ -18,6 +18,7 @@ workspace-hack.workspace = true
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = { workspace = true }
 dispatch2 = { workspace = true }
+koe-transcribe = { workspace = true }
 objc2 = { workspace = true }
 objc2-app-kit = { workspace = true, features = [
   "NSApplication",
@@ -31,20 +32,12 @@ objc2-av-foundation = { workspace = true, features = [
   "AVMediaFormat",
   "block2",
 ] }
-objc2-avf-audio = { workspace = true, features = [
-  "AVAudioBuffer",
-  "AVAudioFormat",
-  "AVAudioTypes",
-] }
 objc2-core-media = { workspace = true, features = ["CMTime"] }
 objc2-foundation = { workspace = true, features = [
   "NSArray",
   "NSEnumerator",
   "NSError",
-  "NSLocale",
-  "NSSet",
   "NSString",
-  "NSValue",
   "block2",
 ] }
 objc2-screen-capture-kit = { workspace = true, features = [
@@ -54,17 +47,6 @@ objc2-screen-capture-kit = { workspace = true, features = [
   "dispatch2",
   "libc",
   "objc2-core-media",
-] }
-objc2-speech = { workspace = true, features = [
-  "SFSpeechRecognitionRequest",
-  "SFSpeechRecognitionResult",
-  "SFSpeechRecognitionTask",
-  "SFSpeechRecognitionTaskHint",
-  "SFSpeechRecognizer",
-  "SFTranscription",
-  "SFTranscriptionSegment",
-  "block2",
-  "objc2-avf-audio",
 ] }
 
 [lints]

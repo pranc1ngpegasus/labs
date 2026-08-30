@@ -13,8 +13,6 @@ mod macos_capture;
 mod macos_discovery;
 #[cfg(target_os = "macos")]
 mod macos_system;
-#[cfg(target_os = "macos")]
-mod speech_session;
 
 pub use api::{
     check_permission, enumerate_apps, feed_monitor, feed_transcription_audio,

@@ -103,7 +103,7 @@ pub struct TranscriptionHandle {
     pub(crate) callback: TranscriptionCallbackRef,
     /// Native recognition session, when one is running (macOS only).
     #[cfg(target_os = "macos")]
-    session: Mutex<Option<crate::speech_session::SpeechSession>>,
+    session: Mutex<Option<koe_transcribe::SpeechAnalyzer>>,
 }
 
 impl TranscriptionHandle {
@@ -125,7 +125,7 @@ impl TranscriptionHandle {
     #[cfg(target_os = "macos")]
     pub(crate) fn attach_session(
         &self,
-        session: crate::speech_session::SpeechSession,
+        session: koe_transcribe::SpeechAnalyzer,
     ) {
         let mut guard = self
             .session
@@ -134,17 +134,29 @@ impl TranscriptionHandle {
         *guard = Some(session);
     }
 
-    /// Takes (or leaves) the native recognition session for feeding/finalize.
+    /// Borrows the native recognition session for a non-blocking operation
+    /// (feeding audio).
     #[cfg(target_os = "macos")]
     pub(crate) fn with_session<R>(
         &self,
-        f: impl FnOnce(Option<&mut crate::speech_session::SpeechSession>) -> R,
+        f: impl FnOnce(Option<&koe_transcribe::SpeechAnalyzer>) -> R,
     ) -> R {
-        let mut guard = self
+        let guard = self
             .session
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        f(guard.as_mut())
+        f(guard.as_ref())
+    }
+
+    /// Removes the session so finalize can block *outside* the handle lock
+    /// (a concurrent feed keeps working; the analyzer's finish owns the
+    /// result wait and pumps the run loop itself).
+    #[cfg(target_os = "macos")]
+    pub(crate) fn take_session(&self) -> Option<koe_transcribe::SpeechAnalyzer> {
+        self.session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 }
 

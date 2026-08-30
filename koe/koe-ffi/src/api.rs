@@ -12,6 +12,7 @@ use crate::handles::{CaptureHandle, MonitorHandle, RecordingHandle, Transcriptio
 use crate::native;
 use crate::types::{
     AppInfo, AudioSourceConfig, OutputFormat, Permission, PermissionStatus, SpeechEngine,
+    TranscriptionSegment,
 };
 
 #[must_use]
@@ -136,6 +137,33 @@ fn transcription_stubbed() -> bool {
     STUB_TRANSCRIPTION.load(Ordering::SeqCst)
 }
 
+/// Maps a koe-transcribe error onto the exported `UniFFI` error type.
+#[cfg(target_os = "macos")]
+fn map_transcription_error(error: koe_transcribe::Error) -> TranscriptionError {
+    match error {
+        koe_transcribe::Error::PermissionDenied(msg) => {
+            TranscriptionError::PermissionDenied { msg }
+        },
+        koe_transcribe::Error::UnsupportedLocale(locale) => {
+            TranscriptionError::UnsupportedLocale { locale }
+        },
+        koe_transcribe::Error::NotAvailable => TranscriptionError::NotAvailable,
+        koe_transcribe::Error::OnDeviceUnavailable { msg } => {
+            TranscriptionError::OnDeviceUnavailable { msg }
+        },
+        koe_transcribe::Error::Internal(msg) => TranscriptionError::Internal { msg },
+    }
+}
+
+#[cfg(target_os = "macos")]
+const fn to_requested_engine(engine: SpeechEngine) -> koe_transcribe::RequestedEngine {
+    match engine {
+        SpeechEngine::Auto => koe_transcribe::RequestedEngine::Auto,
+        SpeechEngine::OnDevice => koe_transcribe::RequestedEngine::OnDevice,
+        SpeechEngine::Network => koe_transcribe::RequestedEngine::Network,
+    }
+}
+
 #[cfg(target_os = "macos")]
 #[allow(clippy::needless_pass_by_value)]
 fn start_transcription_native(
@@ -145,8 +173,8 @@ fn start_transcription_native(
     if transcription_stubbed() {
         return Ok(());
     }
-    let session = crate::speech_session::SpeechSession::start(handle, &handle.locale, engine)?;
-    if engine == SpeechEngine::Auto && session.engine() == crate::speech_session::Engine::Network {
+    let session = start_koe_session(handle, engine)?;
+    if engine == SpeechEngine::Auto && session.engine() == koe_transcribe::Engine::Network {
         eprintln!(
             "warning: on-device speech recognition is unavailable (Siri & Dictation \
              disabled); falling back to network recognition — audio is sent to Apple's servers"
@@ -154,6 +182,43 @@ fn start_transcription_native(
     }
     handle.attach_session(session);
     Ok(())
+}
+
+/// Starts a [`SpeechAnalyzer`](koe_transcribe::SpeechAnalyzer) wired to
+/// `handle`'s segment/error callbacks, mapping the engine and errors onto the
+/// exported API surface.
+#[cfg(target_os = "macos")]
+fn start_koe_session(
+    handle: &Arc<TranscriptionHandle>,
+    engine: SpeechEngine,
+) -> Result<koe_transcribe::SpeechAnalyzer, TranscriptionError> {
+    let weak = Arc::downgrade(handle);
+    let on_segment = move |segment: &koe_transcribe::Segment| {
+        let Some(handle) = weak.upgrade() else {
+            return;
+        };
+        handle.deliver_segment(TranscriptionSegment {
+            text: segment.text.clone(),
+            start_ms: segment.start_ms,
+            end_ms: segment.end_ms,
+            is_final: segment.is_final,
+            confidence: segment.confidence,
+        });
+    };
+    let weak = Arc::downgrade(handle);
+    let on_error = move |message: &str| {
+        let Some(handle) = weak.upgrade() else {
+            return;
+        };
+        handle.deliver_error(message.to_owned());
+    };
+    koe_transcribe::SpeechAnalyzer::start(
+        &handle.locale,
+        to_requested_engine(engine),
+        on_segment,
+        on_error,
+    )
+    .map_err(map_transcription_error)
 }
 
 #[allow(clippy::missing_errors_doc, clippy::needless_pass_by_value)]
@@ -197,19 +262,15 @@ pub fn feed_transcription_audio(
 pub fn finalize_transcription(handle: Arc<TranscriptionHandle>) {
     #[cfg(target_os = "macos")]
     {
-        // Take the completion receiver and release the session lock before
-        // waiting: feeding may still be in flight from a capture thread.
-        let receiver = handle.with_session(|mut session| {
-            session
-                .as_mut()
-                .and_then(|session_ref| session_ref.start_finalize())
-        });
-        let Some(receiver) = receiver else {
+        // Take the session out of the handle so the blocking finalize wait
+        // never holds the handle lock (feeding may still be in flight from a
+        // capture thread).
+        let Some(mut session) = handle.take_session() else {
             // No active session (already finalized or never started).
             eprintln!("warning: transcription session not active at finalize");
             return;
         };
-        if let Err(err) = crate::speech_session::wait_for_finalize(&receiver) {
+        if let Err(err) = session.finish() {
             eprintln!("warning: transcription finalize failed: {err}");
         }
     }
