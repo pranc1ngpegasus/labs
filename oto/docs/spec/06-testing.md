@@ -71,6 +71,7 @@ CI にオーディオデバイスは無いため、capture 経路は手動で確
 | OS | 確認項目 |
 |---|---|
 | macOS | `oto list` で内蔵マイク/外部 USB が見える。`oto record a.wav` → 音声が入る。権限プロンプトが出ること。`oto record a.ogg` が ffplay / VLC で再生できる |
+| macOS システム音声 | `oto list` に `System audio: available` が出る。音楽/動画を再生しながら `oto record --source system a.wav` → 音が入り、停止中の無音区間と区別できる。`--source system a.ogg` が再生できる。Screen Recording 権限プロンプトが出る。`--source system --device X` は `--device` を無視して録音できる |
 | Linux (PulseAudio / pipewire-pulse) | `oto list`、44.1 kHz デバイスでの `oto record a.ogg`(リサンプル経路)、`aplay` で再生確認 |
 | Windows | WASAPI デバイスで録音、メディアプレイヤーで再生確認(実レート/チャンネルが要求と異なる場合の挙動) |
 | 全 OS | Ctrl-C 正常停止→ファイル確定、Ctrl-C 2 回→exit 5、`--duration` 停止、`--device` 選択、ドロップ警告表示 |
