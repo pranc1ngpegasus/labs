@@ -7,6 +7,7 @@
 mod capture;
 #[cfg(target_os = "macos")]
 mod playback;
+mod system;
 
 use serde::Serialize;
 use shiguredo_audio_device::AudioDeviceList;
@@ -16,6 +17,7 @@ pub use capture::CaptureSession;
 #[cfg(target_os = "macos")]
 pub use playback::PlaybackSession;
 pub use shiguredo_audio_device::{AudioCaptureConfig, AudioFormat, AudioFrameOwned};
+pub use system::SystemCaptureSession;
 
 /// A single enumerable input device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -43,6 +45,12 @@ pub enum Error {
     #[cfg(target_os = "macos")]
     #[error("playback session is not running")]
     Stopped,
+    /// System-audio capture is not available on this platform yet.
+    ///
+    /// Returned by [`SystemCaptureSession::start`] on platforms without a
+    /// system-audio backend (Linux / Windows support is pending).
+    #[error("system audio capture is not supported on this platform")]
+    Unsupported,
 }
 
 /// Enumerates the system's input devices (microphones).

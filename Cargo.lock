@@ -2456,6 +2456,13 @@ dependencies = [
 name = "oto-capture"
 version = "0.0.0"
 dependencies = [
+ "block2",
+ "dispatch2",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-core-media",
+ "objc2-foundation",
+ "objc2-screen-capture-kit",
  "serde",
  "shiguredo_audio_device",
  "thiserror 2.0.20",
