@@ -3,6 +3,7 @@ members = [
   "koe/koe-cli",
   "koe/koe-core",
   "koe/koe-ffi",
+  "koe/koe-transcribe",
   "oto/oto-capture",
   "oto/oto-cli",
   "oto/oto-core",
@@ -39,6 +40,7 @@ jiff = "0.2.18"
 koe-cli = { path = "koe/koe-cli" }
 koe-core = { path = "koe/koe-core" }
 koe-ffi = { path = "koe/koe-ffi" }
+koe-transcribe = { path = "koe/koe-transcribe" }
 log = "0.4.33"
 objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", default-features = false }

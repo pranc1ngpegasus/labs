@@ -1,0 +1,15 @@
+[package]
+edition.workspace = true
+name = "koe-transcribe"
+version.workspace = true
+description = "Zero-runtime-dependency macOS on-device speech recognition wrapper over the Speech framework"
+
+[build-dependencies]
+bindgen = "0.72"
+cc = "1.2"
+
+[dependencies]
+workspace-hack.workspace = true
+
+[lints]
+workspace = true
