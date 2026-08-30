@@ -18,7 +18,6 @@ workspace-hack.workspace = true
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = { workspace = true }
 dispatch2 = { workspace = true }
-koe-capture = { workspace = true }
 koe-transcribe = { workspace = true }
 objc2 = { workspace = true }
 objc2-app-kit = { workspace = true, features = [
@@ -49,6 +48,7 @@ objc2-screen-capture-kit = { workspace = true, features = [
   "libc",
   "objc2-core-media",
 ] }
+oto-capture = { workspace = true }
 
 [lints]
 workspace = true

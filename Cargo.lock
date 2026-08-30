@@ -1923,15 +1923,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "koe-capture"
-version = "0.0.0"
-dependencies = [
- "shiguredo_audio_device",
- "thiserror 2.0.20",
- "workspace-hack",
-]
-
-[[package]]
 name = "koe-cli"
 version = "0.0.0"
 dependencies = [
@@ -1951,12 +1942,10 @@ name = "koe-core"
 version = "0.0.0"
 dependencies = [
  "fs2",
- "getrandom 0.4.3",
  "koe-ffi",
  "log",
- "ogg",
+ "oto-encode",
  "serde_json",
- "shiguredo_opus",
  "thiserror 2.0.20",
  "tokio",
  "workspace-hack",
@@ -1968,7 +1957,6 @@ version = "0.0.0"
 dependencies = [
  "block2",
  "dispatch2",
- "koe-capture",
  "koe-transcribe",
  "objc2",
  "objc2-app-kit",
@@ -1976,6 +1964,7 @@ dependencies = [
  "objc2-core-media",
  "objc2-foundation",
  "objc2-screen-capture-kit",
+ "oto-capture",
  "thiserror 2.0.20",
  "uniffi",
  "workspace-hack",

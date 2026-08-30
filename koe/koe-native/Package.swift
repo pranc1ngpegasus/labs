@@ -30,11 +30,8 @@ let package = Package(
       dependencies: ["KoeFfi"],
       path: "Sources/koe-native",
       linkerSettings: [
-        .linkedFramework("ApplicationServices"),
-        .linkedFramework("AudioToolbox"),
+        .linkedFramework("AppKit"),
         .linkedFramework("AVFoundation"),
-        .linkedFramework("CoreAudio"),
-        .linkedFramework("ScreenCaptureKit"),
         .linkedFramework("Speech"),
       ]
     ),

@@ -1,11 +1,10 @@
 //! Playback session wrapping [`shiguredo_audio_device::AudioPlayback`].
 //!
-//! Bridges koe's push model (producers call [`PlaybackSession::write`] with
+//! Bridges the push model (producers call [`PlaybackSession::write`] with
 //! interleaved stereo Float32) onto the backend's pull model (the render
 //! callback requests frames on demand). A mutex-protected pending buffer holds
 //! incoming PCM; the pull callback drains it and pads underruns with silence so
-//! the device keeps running, matching the `AudioMonitor.swift` design this
-//! replaces.
+//! the device keeps running.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -14,7 +13,7 @@ use shiguredo_audio_device::{AudioPlayback, AudioPlaybackConfig, PlaybackFrame};
 
 use crate::Error;
 
-/// Bounds the requested sample rate / channel count: the koe canonical format.
+/// Bounds the requested sample rate / channel count: the canonical format.
 const REQUESTED_SAMPLE_RATE: i32 = 48_000;
 const REQUESTED_CHANNELS: i32 = 2;
 /// Cap pending samples to ~200 ms so a stalled device cannot grow memory

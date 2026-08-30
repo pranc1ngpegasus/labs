@@ -1,16 +1,20 @@
-//! Oto capture — device enumeration and microphone capture.
+//! Oto capture — device enumeration, microphone capture, and playback.
 //!
 //! Wraps [`shiguredo_audio_device`] so that platform-specific backend code and
-//! feature selection stay confined to this crate. Device listing and capture
-//! sessions land here (design 02).
+//! feature selection stay confined to this crate. Device listing, capture
+//! sessions, and playback sessions land here (design 02).
 
 mod capture;
+#[cfg(target_os = "macos")]
+mod playback;
 
 use serde::Serialize;
 use shiguredo_audio_device::AudioDeviceList;
 use thiserror::Error;
 
 pub use capture::CaptureSession;
+#[cfg(target_os = "macos")]
+pub use playback::PlaybackSession;
 pub use shiguredo_audio_device::{AudioCaptureConfig, AudioFormat, AudioFrameOwned};
 
 /// A single enumerable input device.
@@ -26,12 +30,19 @@ pub struct DeviceInfo {
     pub sample_rate: i32,
 }
 
-/// Errors from device enumeration and capture.
+/// Errors from device enumeration, capture, and playback.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Device enumeration or device property lookup failed.
     #[error("device enumeration failed: {0}")]
     Device(String),
+    /// A playback session operation was attempted after the session stopped.
+    ///
+    /// Returned by [`PlaybackSession::write`] once [`PlaybackSession::stop`]
+    /// has been called; never by the capture path.
+    #[cfg(target_os = "macos")]
+    #[error("playback session is not running")]
+    Stopped,
 }
 
 /// Enumerates the system's input devices (microphones).

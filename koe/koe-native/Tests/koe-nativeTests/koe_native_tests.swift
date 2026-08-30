@@ -4,46 +4,22 @@ import XCTest
 @testable import koe_native
 
 final class KoeNativeTests: XCTestCase {
-  override func setUp() {
-    super.setUp()
-    KoeFfiBootstrap.install()
-  }
-
   func testKoeFfiAdd() {
     XCTAssertEqual(add(left: 2, right: 2), 4)
   }
 
   func testFfiCheckPermission() {
     let status = checkPermission(permission: .microphone)
+    // No provider registered (permissions are pure Rust in the CLI); the FFI
+    // read degrades to `notDetermined` rather than panicking.
     XCTAssertEqual(status, .notDetermined)
   }
 
   func testFfiEnumerateApps() {
+    // The Rust discovery provider (installed by the CLI) owns app enumeration;
+    // without it the FFI call degrades to an empty list rather than throwing.
     let apps = enumerateApps()
-    XCTAssertEqual(
-      apps,
-      ProcessEnumerator.enumerateApps().map { app in
-        AppInfo(
-          pid: app.pid,
-          name: app.name,
-          bundleId: app.bundleID,
-          hasAudio: app.hasAudio
-        )
-      })
-  }
-
-  func testAudioTapRejectsUnknownProcess() {
-    // PID 0 has no audio object; tap creation must fail cleanly.
-    XCTAssertThrowsError(try AudioTap(pid: 0)) { error in
-      guard case AudioTap.Error.processNotFound = error else {
-        return XCTFail("expected processNotFound, got \(error)")
-      }
-    }
-  }
-
-  func testPermissionCheckerDefaults() {
-    let micStatus = PermissionChecker.status(for: .microphone)
-    XCTAssertEqual(micStatus, .notDetermined)
+    XCTAssertTrue(apps.isEmpty)
   }
 
   func testSpeechAnalyzerInitialization() throws {
@@ -56,27 +32,6 @@ final class KoeNativeTests: XCTestCase {
         return XCTFail("unexpected error \(error)")
       }
     }
-  }
-
-  func testScreenAudioCaptureInitialization() {
-    // Stream setup requires Screen Recording permission (interactive), so only
-    // verify construction and the value type used to deliver chunks.
-    let capture = ScreenAudioCapture()
-    XCTAssertNotNil(capture)
-
-    let buffer = ScreenAudioCapture.AudioBuffer(
-      samples: [0.0, 0.0],
-      frameCount: 1,
-      timestampMilliseconds: 123
-    )
-    XCTAssertEqual(buffer.frameCount, 1)
-    XCTAssertEqual(buffer.samples.count, 2)
-    XCTAssertEqual(buffer.timestampMilliseconds, 123)
-  }
-
-  func testProcessEnumeratorEmpty() {
-    let apps = ProcessEnumerator.enumerateApps()
-    XCTAssertEqual(apps, [])
   }
 
   func testCaptureErrorVariantsAreDistinguishable() {

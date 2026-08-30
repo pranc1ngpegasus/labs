@@ -3,7 +3,7 @@
 //! Signal path (spec): Ring Buffer → AEC → Clean Audio ─┬─→ Encoder
 //!                                                      └─→ `AudioQueue` output
 //!
-//! The output session lives in `koe-capture` (`PlaybackSession`), which wraps
+//! The output session lives in `oto-capture` (`PlaybackSession`), which wraps
 //! Shiguredo's `AudioPlayback`. This module owns the pipeline-side contract and
 //! an FFI-backed implementation. Monitoring failures are non-fatal: the
 //! recording path must keep running.

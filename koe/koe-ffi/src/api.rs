@@ -73,7 +73,7 @@ pub fn stop_capture(handle: Arc<CaptureHandle>) {
 
 /// Starts a monitoring session that plays clean PCM to the default output.
 ///
-/// On macOS this backs onto `koe-capture`'s `AudioPlayback` (Shiguredo); on
+/// On macOS this backs onto `oto-capture`'s `AudioPlayback` (Shiguredo); on
 /// other platforms it allocates an inert handle so `koe-core` can exercise the
 /// start/feed/stop path on all targets.
 #[allow(clippy::missing_errors_doc)]
@@ -82,7 +82,7 @@ pub fn start_monitor() -> Result<Arc<MonitorHandle>, MonitorError> {
     let handle = Arc::new(MonitorHandle::new());
     #[cfg(target_os = "macos")]
     {
-        let session = koe_capture::PlaybackSession::start()
+        let session = oto_capture::PlaybackSession::start()
             .map_err(|e| MonitorError::CreateFailed { msg: e.to_string() })?;
         handle.attach_session(session);
     }
