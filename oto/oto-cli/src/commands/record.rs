@@ -1,10 +1,11 @@
-//! `oto record` — capture microphone input to a WAV or Ogg/Opus file.
+//! `oto record` — capture microphone or system audio to a WAV/Ogg/Opus file.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use oto_core::{
-    OutputFormat, RecordingConfig, RecordingError, RecordingSession, Tags, list_input_devices,
+    AudioSource, OutputFormat, RecordingConfig, RecordingError, RecordingSession, Tags,
+    list_input_devices,
 };
 use usage::Args;
 
@@ -14,13 +15,15 @@ use crate::signals::{InterruptGate, spawn_force_exit_watchdog};
 
 /// Default Opus bitrate in kbps (design 02).
 const DEFAULT_BITRATE_KBPS: u32 = 64;
-/// Default requested channel count.
+/// Default requested channel count (mono for microphone capture).
 const DEFAULT_CHANNELS: u8 = 1;
+/// Default requested channel count for system-audio capture (stereo mix).
+const DEFAULT_SYSTEM_CHANNELS: u8 = 2;
 /// Opus bitrate bounds enforced by `shiguredo_opus` (design 04).
 const MIN_OPUS_BITRATE_BPS: u32 = 500;
 const MAX_OPUS_BITRATE_BPS: u32 = 512_000;
 
-/// Record microphone input to a file.
+/// Record audio (microphone or system output) to a file.
 #[derive(Debug, Args)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct RecordArgs {
@@ -28,7 +31,12 @@ pub struct RecordArgs {
     #[usage(value_name = "OUTPUT")]
     output: Option<PathBuf>,
 
+    /// Audio source: `mic` (default) or `system` (the system's output mix).
+    #[usage(long, default = "mic")]
+    source: Option<String>,
+
     /// Device to record from (`unique_id`, or a case-insensitive name match).
+    /// Only used with `--source mic`.
     #[usage(long)]
     device: Option<String>,
 
@@ -67,8 +75,16 @@ impl RecordArgs {
     async fn record(self) -> Result<(), MainError> {
         let output = self.output.unwrap_or_else(default_output_path);
         let format = resolve_format(&output, self.format.as_deref())?;
-        let device_id = resolve_device_id(self.device.as_deref())?;
-        let channels = self.channels.unwrap_or(DEFAULT_CHANNELS);
+        let source = resolve_source(self.source.as_deref())?;
+        let device_id = match source {
+            AudioSource::Microphone => resolve_device_id(self.device.as_deref())?,
+            AudioSource::System => None,
+        };
+        let channels = self.channels.unwrap_or(if source == AudioSource::System {
+            DEFAULT_SYSTEM_CHANNELS
+        } else {
+            DEFAULT_CHANNELS
+        });
         if !matches!(channels, 1 | 2) {
             return Err(MainError::InvalidArgs(format!(
                 "channels must be 1 or 2, got {channels}"
@@ -94,6 +110,7 @@ impl RecordArgs {
         let config = RecordingConfig {
             output: output.clone(),
             format,
+            source,
             device_id,
             channels,
             bitrate_bps: Some(bitrate_bps),
@@ -104,8 +121,12 @@ impl RecordArgs {
         let spec = session.spec();
 
         if !self.quiet {
+            let what = match source {
+                AudioSource::Microphone => "microphone input",
+                AudioSource::System => "system audio",
+            };
             eprintln!(
-                "Recording to {} [{spec}] — Ctrl-C to stop",
+                "Recording {what} to {} [{spec}] — Ctrl-C to stop",
                 output.display()
             );
         }
@@ -200,6 +221,18 @@ fn resolve_format(
     {
         Some(e) if e == "wav" => Ok(OutputFormat::Wav),
         _ => Ok(OutputFormat::OggOpus),
+    }
+}
+
+/// Resolves the `--source` selector to an [`AudioSource`]. `mic` is the
+/// default; `system` captures the system's output mix.
+fn resolve_source(selector: Option<&str>) -> Result<AudioSource, MainError> {
+    match selector.map(str::to_ascii_lowercase).as_deref() {
+        None | Some("mic" | "microphone") => Ok(AudioSource::Microphone),
+        Some("system" | "loopback") => Ok(AudioSource::System),
+        Some(other) => Err(MainError::InvalidArgs(format!(
+            "unknown source: {other} (expected `mic` or `system`)"
+        ))),
     }
 }
 
@@ -304,5 +337,24 @@ mod tests {
             OutputFormat::Wav
         );
         assert!(resolve_format(Path::new("a.ogg"), Some("mp3")).is_err());
+    }
+
+    #[test]
+    fn resolves_source_selector() {
+        assert_eq!(resolve_source(None).unwrap(), AudioSource::Microphone);
+        assert_eq!(
+            resolve_source(Some("mic")).unwrap(),
+            AudioSource::Microphone
+        );
+        assert_eq!(
+            resolve_source(Some("MIC")).unwrap(),
+            AudioSource::Microphone
+        );
+        assert_eq!(resolve_source(Some("system")).unwrap(), AudioSource::System);
+        assert_eq!(
+            resolve_source(Some("loopback")).unwrap(),
+            AudioSource::System
+        );
+        assert!(resolve_source(Some("camera")).is_err());
     }
 }

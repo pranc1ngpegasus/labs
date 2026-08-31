@@ -26,7 +26,7 @@ struct CliRoot {
 enum Command {
     /// List input audio devices.
     List(ListArgs),
-    /// Record microphone input to a file.
+    /// Record audio (microphone or system output) to a file.
     Record(RecordArgs),
 }
 

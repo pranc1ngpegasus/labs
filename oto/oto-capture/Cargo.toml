@@ -11,6 +11,32 @@ shiguredo_audio_device = { workspace = true, default-features = false, features 
   "default-coreaudio",
 ] }
 
+# ScreenCaptureKit system-audio loopback (macOS 13+), Rust-only FFI via objc2.
+block2 = { workspace = true }
+dispatch2 = { workspace = true }
+objc2 = { workspace = true }
+objc2-app-kit = { workspace = true, features = [
+  "NSApplication",
+  "NSResponder",
+  "NSRunningApplication",
+  "libc",
+] }
+objc2-core-media = { workspace = true, features = ["CMTime"] }
+objc2-foundation = { workspace = true, features = [
+  "NSArray",
+  "NSError",
+  "NSString",
+  "block2",
+] }
+objc2-screen-capture-kit = { workspace = true, features = [
+  "SCShareableContent",
+  "SCStream",
+  "block2",
+  "dispatch2",
+  "libc",
+  "objc2-core-media",
+] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 shiguredo_audio_device = { workspace = true, default-features = false, features = [
   "default-pulse",

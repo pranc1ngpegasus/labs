@@ -74,14 +74,19 @@ macOS / Linux / Windows で動くプラットフォーム)。リポジトリ内�
 ### ゴール
 
 - `oto record <out.wav|out.ogg>` でマイク入力をファイルに録音できる(macOS / Linux / Windows)。
-- `oto list` で入力デバイスを列挙できる(人間向けテキストと `--json`)。
+- `oto record --source system <out.ogg>` で**システム出力ミックス(ループバック)**を録音できる。
+  macOS は ScreenCaptureKit 経由(ドライバ不要、macOS 13+)。Linux(PulseAudio monitor)と
+  Windows(WASAPI loopback)は追加実装予定。
+- `oto list` で入力デバイスを列挙できる(人間向けテキストと `--json`)。テキスト出力には
+  システム音声ソースの利用可否を 1 行表示する。
 - 録音は Ctrl-C / `--duration` で終了し、ファイルを**正常に確定**できる(ヘッダ書き戻し、Ogg 最終ページ)。
 - audio-device-rs と shiguredo_opus の両方が実際に使われる。
 - `nix flake check`(CI)が通る。macOS / Linux は `nix build .#oto` でビルド可能。
 
 ### 非ゴール(MVP では作らない)
 
-- デバイス再生、ボリューム制御、音声効果
+- デバイス再生、ボリューム制御、音声効果(※システム音声の**録音**はゴール。再生は非ゴール)
+- Linux(PulseAudio monitor)・Windows(WASAPI loopback)のシステム音声キャプチャは MVP 後(ロードマップ)
 - 転写・音声認識・字幕生成(※将来トピック。ロードマップ参照)
 - GUI / TUI
 - 設定ファイル、デーモン、システム統合(ホットキー等)

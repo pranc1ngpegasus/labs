@@ -61,21 +61,24 @@ oto list [--json]
   ```
 
 - `--json`: `[{ "name", "unique_id", "channels", "sample_rate" }]`(`serde` + `serde_json`)。
-- デバイスが 1 台も見つからない場合はエラー(Io/Internal ではなく exit 3、メッセージに
-  「マイクの権限/接続を確認してください」ヒントを添える)。
+- テキスト出力では最後にシステム音声ソースの利用可否を 1 行表示する:
+  `System audio: available (macOS 13+) (`oto record --source system`)`。
+  `--json` のスキーマは入力デバイスのみで変更しない(安定契約)。
 
 ### `oto record`
 
 ```console
-oto record [<output>] [--device <id-or-name>] [--channels <1|2>]
-           [--bitrate <kbps>] [--duration <secs>] [--format <wav|ogg>] [--quiet]
+oto record [<output>] [--source <mic|system>] [--device <id-or-name>]
+           [--channels <1|2>] [--bitrate <kbps>] [--duration <secs>]
+           [--format <wav|ogg>] [--quiet]
 ```
 
 | フラグ | 既定値 | 説明 |
 |---|---|---|
 | `<output>` | `oto-<timestamp>.ogg` | 出力パス。拡張子で形式を判定(既定は Ogg/Opus) |
-| `--device` | デフォルト入力 | `unique_id` 完全一致 → なければ `name` の部分一致(大文字小文字無視)。一致なしは exit 3 |
-| `--channels` | `1` | 要求チャンネル数。実機が別の値を返す場合は実機優先(WASAPI 共有モード等) |
+| `--source` | `mic` | 録音ソース。`mic` / `microphone`(入力デバイス)と `system` / `loopback`(システム出力ミックス)。`system` は macOS 13+ の ScreenCaptureKit 経由(ドライバ不要)。他プラットフォームでは未実装(exit 3) |
+| `--device` | デフォルト入力 | `unique_id` 完全一致 → なければ `name` の部分一致(大文字小文字無視)。一致なしは exit 3。`--source system` では使わない |
+| `--channels` | mic:`1` / system:`2` | 要求チャンネル数。実機が別の値を返す場合は実機優先(WASAPI 共有モード等) |
 | `--bitrate` | `64` | Opus ビットレート(kbps)。WAV では無視 |
 | `--duration` | なし(Ctrl-C まで) | 指定秒数で自動停止。`--duration 90` / `--duration 1.5`(小数可) |
 | `--format` | 拡張子判定(既定 Ogg/Opus) | `wav` / `ogg` を明示指定。拡張子と異なる場合はこちらを優先 |
@@ -84,7 +87,8 @@ oto record [<output>] [--device <id-or-name>] [--channels <1|2>]
 実行中の表示(1 秒間隔で更新、stderr、`--quiet` で抑制):
 
 ```
-Recording to recording-20260824-153000.ogg [mono 48000 Hz, 64 kbps] — 1:23, 680 KB — Ctrl-C to stop
+Recording microphone input to recording-20260824-153000.ogg [mono 48000 Hz] — Ctrl-C to stop
+Recording system audio to system-20260824-153000.ogg [stereo 48000 Hz] — Ctrl-C to stop
 ```
 
 停止後のサマリ(stdout):

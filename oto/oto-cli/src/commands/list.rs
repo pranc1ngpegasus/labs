@@ -1,4 +1,4 @@
-//! `oto list` — enumerate input audio devices.
+//! `oto list` — enumerate audio devices and sources.
 
 use std::fmt::Write as _;
 
@@ -19,19 +19,36 @@ pub struct ListArgs {
 impl Run for ListArgs {
     fn run(self) -> Result<(), MainError> {
         let devices = list_input_devices().map_err(|e| MainError::Capture(e.to_string()))?;
-        if devices.is_empty() {
-            return Err(MainError::Capture(
-                "no input devices found (check microphone connections and permissions)".to_owned(),
-            ));
-        }
         if self.json {
             let json =
                 serde_json::to_string(&devices).map_err(|e| MainError::Internal(e.to_string()))?;
             println!("{json}");
         } else {
             print!("{}", render_list(&devices));
+            if !devices.is_empty() {
+                println!();
+                println!(
+                    "System audio: {} (`oto record --source system`)",
+                    system_hint()
+                );
+            }
         }
         Ok(())
+    }
+}
+
+/// Human-readable hint for the availability of system-audio capture.
+///
+/// `ScreenCaptureKit` drives whole-system audio on macOS 13+; other platforms
+/// report it as pending.
+const fn system_hint() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "available (macOS 13+)"
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        "not yet available on this platform"
     }
 }
 

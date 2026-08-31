@@ -71,7 +71,7 @@ stdenv.mkDerivation {
 
   meta = {
     mainProgram = "oto";
-    description = "Oto (音) — cross-platform offline microphone recorder (WAV / Ogg+Opus)";
+    description = "Oto (音) — cross-platform offline recorder (microphone + system audio, WAV / Ogg+Opus)";
     homepage = "https://github.com/pranc1ngpegasus/labs/tree/main/oto";
   };
 }

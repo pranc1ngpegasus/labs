@@ -13,7 +13,7 @@ pub use oto_capture::Error as CaptureError;
 pub use oto_capture::{AudioFormat, DeviceInfo};
 pub use oto_encode::{EncoderSpec, EncoderStats, Tags};
 
-pub use recorder::{OutputFormat, RecordingConfig, RecordingError, RecordingSession};
+pub use recorder::{AudioSource, OutputFormat, RecordingConfig, RecordingError, RecordingSession};
 
 /// Enumerates the system's input devices.
 ///

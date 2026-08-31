@@ -34,7 +34,9 @@ oto/
 │   └── src/
 │       ├── lib.rs        # 公開 API、AudioFrameOwned の再エクスポート
 │       ├── device.rs     # enumerate_input、デバイス選択(unique_id 完全一致 → name 部分一致)
-│       └── capture.rs    # CaptureSession: AudioCapture 構築・開始/停止
+│       ├── capture.rs    # CaptureSession: AudioCapture 構築・開始/停止
+│       └── system.rs     # SystemCaptureSession: システム出力ミックス(ループバック)
+│           └── macos.rs  #   macOS: ScreenCaptureKit(capturesAudio、ドライバ不要)
 ├── oto-encode/     # 変換・エンコード・コンテナ(leaf、ヘッドレステスト対象)
 │   └── src/
 │       ├── lib.rs        # AudioEncoder トレイト、EncoderSpec/Stats、EncoderKind
@@ -82,11 +84,14 @@ workspace への登録は koe/sui と同様に `[workspace.dependencies]` への
 
 ```mermaid
 flowchart LR
-    subgraph OS["OS 音声入力"]
+    subgraph OS["OS 音声出力"]
+        SYS["システム出力ミックス<br/>macOS: ScreenCaptureKit (F32 48 kHz stereo)"]
+    end
+    subgraph OS2["OS 音声入力"]
         MIC["マイク / デフォルト入力"]
     end
 
-    subgraph CAP["capture スレッド (audio-device-rs のコールバック)"]
+    subgraph CAP["capture スレッド (コールバック)"]
         CB["capture コールバック<br/>Fn(AudioFrame) + Send + Sync"]
         OWN["AudioFrameOwned へコピー<br/>(data は &[u8]、S16|F32)"]
         DROP{"チャネル満杯?"}
@@ -106,6 +111,7 @@ flowchart LR
     end
 
     MIC --> CB
+    SYS --> CB
     CB --> OWN --> DROP
     DROP -->|"SyncSender 送信"| CONV
     DROP -->|"drop-oldest (カウント)"| DROP
@@ -113,13 +119,18 @@ flowchart LR
     SIG --> STOP
 ```
 
-- **capture スレッド**: `shiguredo_audio_device::AudioCapture::new(config, callback)` が内部で
-  コールバックを実行する。ここでやるのは `frame.to_owned()` と `SyncSender` への送信のみ
-  (ファイル I/O・エンコードはしない)。リアルタイム性を壊さないためブロックしない。
+- **capture スレッド**: `shiguredo_audio_device::AudioCapture`(マイク)または
+  `SystemCaptureSession`(システム出力ミックス)のコールバックが実行される。ここでやるのは
+  `frame.to_owned()` と `SyncSender` への送信のみ(ファイル I/O・エンコードはしない)。
+  リアルタイム性を壊さないためブロックしない。
+- **ソース抽象**: `oto-capture::SystemCaptureSession` は `CaptureSession` と同じ
+  `AudioFrameOwned` ストリームと `sample_rate/channels/dropped/stop` 面を持つため、
+  コンシューマ・エンコーダ層はソースを意識しない。`RecordingConfig.source` で
+  `AudioSource::{Microphone, System}` を選ぶだけ。
 - **コンシューマスレッド**: 受信した `AudioFrameOwned` を変換し、エンコーダに渡す。
   エンコーダはコンシューマスレッドが所有する(スレッド間共有なし、`mut` のみ)。
 - **main**: tokio runtime 上でシグナルと `--duration` タイマーを待つ。停止時は
-  `capture.stop()` を呼んでから送信側を drop(チャネル close)し、コンシューマが残余を
+  `source.stop()` を呼んでから送信側を drop(チャネル close)し、コンシューマが残余を
   処理して `finalize()` するのを待つ。
 
 ## バッファリング方針
@@ -162,8 +173,9 @@ enum MainError {
 |---|---|
 | 出力ファイル | `oto-YYYYmmdd-HHMMSS.ogg`(カレントディレクトリ、`jiff` で生成) |
 | 形式 | 拡張子で判定(`.wav` → WAV、`.ogg`/`.opus` → Opus、それ以外 → Opus 既定)。`--format` で上書き |
-| デバイス | デフォルト入力デバイス(`device_id: None`) |
-| チャンネル | 1(モノラル要求)※実デバイスが返す値に従う |
-| サンプルレート | 48 kHz 要求 ※実際の値は `capture.sample_rate()` を利用 |
+| ソース | マイク(`--source system` でシステム出力ミックス) |
+| デバイス | デフォルト入力デバイス(`device_id: None`)※ `--source system` では未使用 |
+| チャンネル | マイク:1 / システム:2(ステレオ)※実デバイスが返す値に従う |
+| サンプルレート | マイク:48 kHz 要求。システム:48 kHz 固定(ScreenCaptureKit 設定) |
 | Opus ビットレート | 64 kbps(`--bitrate` で変更) |
 | フレーム長 | 20 ms(Opus 既定) |
