@@ -1373,37 +1373,15 @@ async fn prompt_llm_error_pops_failed_user_turn() {
     );
 }
 
-#[tokio::test]
-async fn prompt_llm_waiting_shows_spinner_and_allows_typing() {
-    use serde_json::json;
-    use std::time::Duration;
-    use sui_llm::{LlmClient, LlmConfig};
-    use wiremock::{
-        Mock, MockServer, ResponseTemplate,
-        matchers::{body_partial_json, method, path},
-    };
-
-    let server = MockServer::start().await;
-    let sse = concat!(
-        "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"proxy-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"done\"},\"finish_reason\":null}]}\n\n",
-        "data: [DONE]\n\n",
-    );
-    Mock::given(method("POST"))
-        .and(path("/v1/chat/completions"))
-        .and(body_partial_json(json!({ "stream": true })))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_delay(Duration::from_millis(300))
-                .set_body_raw(sse.as_bytes(), "text/event-stream"),
-        )
-        // Quit abandons before the worker may have hit the server.
-        .mount(&server)
-        .await;
-
-    let config = LlmConfig::new(server.uri(), "test-key", "proxy-model").expect("config");
-    let mut app = App::new().with_llm(LlmClient::new(&config));
-    type_text(&mut app, "hi");
-    app.handle_key(key(KeyCode::Enter));
+#[test]
+fn prompt_llm_waiting_shows_spinner_and_allows_typing() {
+    // A never-completing in-flight request, without a real HTTP worker: an
+    // abandoned live worker can fire its request after this test's server is
+    // dropped, and the freed port may be reused by a parallel test's server.
+    let (_tx, rx) = mpsc::channel();
+    let mut app = App::new();
+    app.add_message("hi");
+    app.pending_llm = Some(PendingLlm::new(rx));
 
     assert!(app.pending_llm.is_some());
     let title = app.prompt_title_for_render();
