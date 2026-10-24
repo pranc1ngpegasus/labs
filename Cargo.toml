@@ -83,7 +83,7 @@ toml_edit = "0.25.13"
 tower = "0.5.3"
 ulid = "3.0.0"
 unicode-width = "0.2.2"
-uniffi = "0.28.3"
+uniffi = "0.32.0"
 usage = { package = "usage-rs", version = "6", features = ["validation"] }
 wiremock = "0.6.5"
 workspace-hack = { path = "./workspace-hack" }
