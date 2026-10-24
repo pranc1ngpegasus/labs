@@ -16,7 +16,7 @@ version = "0.0.0"
 aho-corasick = { version = "1" }
 bitflags = { version = "2", default-features = false, features = ["std"] }
 camino = { version = "1", default-features = false, features = ["serde1"] }
-compact_str = { version = "0.9", default-features = false, features = ["std"] }
+compact_str = { version = "0.10", default-features = false, features = ["std"] }
 crossbeam-utils = { version = "0.8" }
 either = { version = "1", default-features = false, features = ["use_std"] }
 futures-channel = { version = "0.3", features = ["sink"] }
